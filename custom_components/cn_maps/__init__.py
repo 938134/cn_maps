@@ -149,8 +149,9 @@ async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> Non
     )
 
 
-async def _async_set_source(hass: HomeAssistant, call: ServiceCall) -> None:
+async def _async_set_source(call: ServiceCall) -> None:
     """前端工具栏调用：切换地图源。"""
+    hass = call.hass
     source_key = call.data["source"]
     source = get_source(source_key)
     entries = hass.config_entries.async_entries(DOMAIN)
