@@ -1,8 +1,9 @@
 __pycache__/
-*.py[cod]
-.venv/
-venv/
+*.pyc
+*.pyo
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
 .vscode/
 .idea/
-*.log
-.DS_Store

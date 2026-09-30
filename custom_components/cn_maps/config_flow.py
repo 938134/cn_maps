@@ -1,12 +1,7 @@
 """配置流 + 选项流 + 表单 schema + Key 校验。
 
-四个文件合并而来：
-* config_flow.py — 配置流：选数据源 + 填 API Key
-* options_flow.py — 选项流：基础设置 / 高级设置 / 恢复默认
-* schemas.py — 表单 schema
-* validation.py — 保存前校验 API Key
-
-底图是全局设置，所以只允许一个实例；后续改配置走选项流。
+合并了原来的 config_flow.py、options_flow.py、schemas.py、validation.py 四个文件。
+选项流只有一页表单（数据源 + Key + 纠偏），高级参数走默认值。
 """
 
 from __future__ import annotations
@@ -25,12 +20,8 @@ from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import (
-    ADVANCED_FIELDS,
     BASIC_FIELDS,
     CONF_API_KEY,
-    CONF_AUTO_RELOAD,
-    CONF_DARKEN_IN_DARK_MODE,
-    CONF_DEBUG,
     CONF_FIX_CHINA_OFFSET,
     CONF_KEYS,
     CONF_MAP_SOURCE,
@@ -62,7 +53,7 @@ def _source_selector() -> selector.SelectSelector:
 
 
 def _selector_for(key: str) -> Any:
-    """除了数据源和 API Key，其余字段都是布尔开关。"""
+    """布尔开关。"""
     return selector.BooleanSelector()
 
 
@@ -77,12 +68,7 @@ def form_schema(
     *,
     include_source: bool = True,
 ) -> vol.Schema:
-    """数据源 + API Key + 指定的其它字段。
-
-    ``api_key`` 是「当前选中数据源」的密钥，保存时会写进 ``keys[密钥名]``，
-    所以切换数据源不会把已填好的 Key 丢掉。``include_source=False`` 用于高级
-    设置那种「不该顺手改数据源」的表单。
-    """
+    """数据源 + API Key + 指定的其它字段。"""
     options = options or {}
     current = get_source(options.get(CONF_MAP_SOURCE))
 
@@ -99,11 +85,6 @@ def form_schema(
             continue
         data[_field(key, options)] = _selector_for(key)
     return vol.Schema(data)
-
-
-def confirm_schema() -> vol.Schema:
-    """「恢复默认设置」用的确认勾选框。"""
-    return vol.Schema({vol.Optional("confirm", default=False): selector.BooleanSelector()})
 
 
 # ============================================================ Key 校验
@@ -202,10 +183,10 @@ class CnMapsConfigFlow(ConfigFlow, domain=DOMAIN):
         )
 
 
-# ============================================================ 选项流
+# ============================================================ 选项流（单页）
 
 class CnMapsOptionsFlow(OptionsFlow):
-    """改数据源、填 Key、调纠偏与显示。"""
+    """改数据源、填 Key、调纠偏。一页搞定。"""
 
     def __init__(self) -> None:
         self._options: dict[str, Any] = {}
@@ -214,16 +195,8 @@ class CnMapsOptionsFlow(OptionsFlow):
         self, user_input: dict | None = None
     ) -> ConfigFlowResult:
         self._options = normalize_options(self.config_entry.options)
-        return self.async_show_menu(
-            step_id="init",
-            menu_options=["basic", "advanced", "reset"],
-        )
-
-    # ------------------------------------------------------------ 基础设置
-    async def async_step_basic(
-        self, user_input: dict | None = None
-    ) -> ConfigFlowResult:
         errors: dict[str, str] = {}
+
         if user_input is not None:
             source = get_source(user_input.get(CONF_MAP_SOURCE))
             key = str(user_input.get(CONF_API_KEY) or "").strip()
@@ -255,52 +228,10 @@ class CnMapsOptionsFlow(OptionsFlow):
                 )
 
         return self.async_show_form(
-            step_id="basic",
-            data_schema=form_schema(
-                self._options, (*BASIC_FIELDS, CONF_API_KEY)
-            ),
+            step_id="init",
+            data_schema=form_schema(self._options, (*BASIC_FIELDS, CONF_API_KEY)),
             errors=errors,
         )
-
-    # ------------------------------------------------------------ 高级设置
-    async def async_step_advanced(
-        self, user_input: dict | None = None
-    ) -> ConfigFlowResult:
-        if user_input is not None:
-            self._options.update(
-                {
-                    CONF_DARKEN_IN_DARK_MODE: bool(
-                        user_input.get(CONF_DARKEN_IN_DARK_MODE, False)
-                    ),
-                    CONF_DEBUG: bool(user_input.get(CONF_DEBUG, False)),
-                    CONF_AUTO_RELOAD: bool(user_input.get(CONF_AUTO_RELOAD, True)),
-                }
-            )
-            return self.async_create_entry(data=normalize_options(self._options))
-
-        return self.async_show_form(
-            step_id="advanced",
-            data_schema=form_schema(
-                self._options, ADVANCED_FIELDS, include_source=False
-            ),
-        )
-
-    # ---------------------------------------------------------- 恢复默认设置
-    async def async_step_reset(
-        self, user_input: dict | None = None
-    ) -> ConfigFlowResult:
-        if user_input is None:
-            return self.async_show_form(
-                step_id="reset", data_schema=confirm_schema()
-            )
-
-        if not user_input.get("confirm"):
-            return self.async_abort(reason="reset_cancelled")
-
-        # 恢复默认，但保留已经填好的 Key，免得让人再申请一遍
-        reset = dict(DEFAULT_OPTIONS)
-        reset[CONF_KEYS] = dict(self._options.get(CONF_KEYS) or {})
-        return self.async_create_entry(data=normalize_options(reset))
 
 
 __all__ = ["CnMapsConfigFlow", "CnMapsOptionsFlow"]

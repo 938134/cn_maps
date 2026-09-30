@@ -7,11 +7,7 @@
  *      样式（样式里的瓦片地址指向本集成在 HA 服务端的瓦片接口）；
  *   2. 在没有 WebGL2、HA 退回 Leaflet 光栅渲染的设备上，把内置的栅格瓦片地址
  *      （/api/map_tiles/raster/...，以及老版本 HA 的 CARTO 瓦片）换成同一套接口；
- *   3. 在地图界面右下角放一个浮动工具栏，可一键切换底图数据源。
- *
- * 除此之外什么都不做：**不抓瓦片、不拼图、不做坐标换算、不碰密钥**。这些都在
- * HA 服务端完成（见集成里的 tiles.py / projection.py），所以手机 App、平板、
- * 老设备看到的地图完全一致，密钥也不会下发到浏览器。
+ *   3. 在页面右下角放一个浮动工具栏，可一键切换底图数据源。
  */
 (function () {
   "use strict";
@@ -24,16 +20,15 @@
     fingerprint: "",
     source: "",
     sourceLabel: "",
-    tileTemplate: "", // 服务端瓦片地址模板，含 {z}{x}{y} 与访问令牌
+    tileTemplate: "",
     debug: false,
     autoReload: true,
     styles: { light: null, dark: null },
-    sources: [], // 工具栏用：所有可选数据源
+    sources: [],
   };
 
   var INJECTED = (typeof window !== "undefined" && window.__cnMapsConfig) || {};
 
-  /** 只覆盖 CONFIG 里已有的键，避免注入里混进无关字段 */
   function applyInjected(source, target) {
     Object.keys(target).forEach(function (key) {
       var value = source[key];
@@ -46,9 +41,9 @@
   applyInjected(INJECTED, CONFIG);
 
   var stats = {
-    styleHits: 0, // 命中 /static/map/*.json 的次数
-    rasterTiles: 0, // 命中 HA 内置栅格瓦片接口的次数
-    cartoTiles: 0, // 命中老版本 CARTO 底图的次数
+    styleHits: 0,
+    rasterTiles: 0,
+    cartoTiles: 0,
     errors: [],
   };
 
@@ -56,8 +51,7 @@
 
   if (!CONFIG.styles || !CONFIG.styles.light) {
     console.warn(
-      "[cn_maps] 没有拿到集成注入的配置，脚本不生效。" +
-        "请通过 HACS / 集成安装并配置数据源，而不是把本文件手工丢进 www/。"
+      "[cn_maps] 没有拿到集成注入的配置，脚本不生效。"
     );
     window.cnMaps = { version: VERSION, active: false, stats: stats };
     return;
@@ -65,7 +59,6 @@
 
   /* ------------------------------------------------------------------ 工具 */
 
-  /** 实例地址：用当前页面地址（移除了手动 baseUrl 配置，Cast 场景由浏览器自行处理） */
   function instanceOrigin() {
     if (typeof location !== "undefined" && location.origin) {
       return location.origin;
@@ -73,7 +66,6 @@
     return "";
   }
 
-  /** 相对地址 -> 绝对地址。注意不能用 new URL()：它会把模板里的 {z} 转义掉 */
   function absolutize(template) {
     if (/^[a-z][a-z0-9+.-]*:\/\//i.test(template)) {
       return template;
@@ -95,9 +87,7 @@
 
   function prepareStyle(name) {
     var raw = CONFIG.styles[name];
-    if (!raw) {
-      return null;
-    }
+    if (!raw) return null;
     var sources = {};
     Object.keys(raw.sources || {}).forEach(function (id) {
       var source = raw.sources[id];
@@ -109,13 +99,9 @@
   }
 
   function styleFor(url) {
-    if (!url || url.indexOf("static/map/") === -1) {
-      return null;
-    }
+    if (!url || url.indexOf("static/map/") === -1) return null;
     var match = STYLE_RE.exec(url);
-    if (!match) {
-      return null;
-    }
+    if (!match) return null;
     var name = match[1];
     if (!preparedStyles[name]) {
       preparedStyles[name] = prepareStyle(name);
@@ -129,9 +115,7 @@
   var CARTO_RE = /cartodb-basemaps-[a-z]\.global\.ssl\.fastly\.net\/[^?#]*\/(\d+)\/(\d+)\/(\d+)\.png(?:[?#].*)?$/;
 
   function rewriteTileUrl(raw) {
-    if (!raw || typeof raw !== "string" || !CONFIG.tileTemplate) {
-      return null;
-    }
+    if (!raw || typeof raw !== "string" || !CONFIG.tileTemplate) return null;
     var match = RASTER_RE.exec(raw);
     if (match) {
       stats.rasterTiles++;
@@ -153,12 +137,8 @@
       : null;
 
   function requestUrl(input) {
-    if (typeof input === "string") {
-      return input;
-    }
-    if (input && typeof input.url === "string") {
-      return input.url;
-    }
+    if (typeof input === "string") return input;
+    if (input && typeof input.url === "string") return input.url;
     return "";
   }
 
@@ -184,7 +164,6 @@
     };
   }
 
-  // Leaflet / 老路径：只改「指向 HA 内置栅格底图」的那些 <img>
   var imgProto =
     typeof HTMLImageElement !== "undefined" ? HTMLImageElement.prototype : null;
   var srcDescriptor = imgProto
@@ -210,34 +189,27 @@
   /** 从 HA 前端获取 hass 对象（用于调用服务） */
   function getHass() {
     var el = document.querySelector("home-assistant");
-    return el && el.hass;
+    if (el && el.hass) return el.hass;
+    // 兼容：尝试 shadow DOM 里的子元素
+    if (el && el.shadowRoot) {
+      var inner = el.shadowRoot.querySelector("home-assistant-main") ||
+                   el.shadowRoot.querySelector("ha-panel");
+      if (inner && inner.hass) return inner.hass;
+    }
+    return null;
   }
 
-  /** 判断当前是否在地图相关页面 */
-  function isMapPage() {
-    var path = location.pathname || "";
-    // 地图面板、实体详情、概览面板都可能出地图
-    return (
-      path.indexOf("/map") !== -1 ||
-      path.indexOf("/entity") !== -1 ||
-      path.indexOf("/lovelace") !== -1 ||
-      path.indexOf("/overview") !== -1
-    );
-  }
-
-  /** 在地图右下角放一个浮动工具栏 */
+  /** 在右下角放一个浮动工具栏，始终显示 */
   function createToolbar() {
     if (!CONFIG.sources || CONFIG.sources.length === 0) return;
 
-    // 等页面结构稳定后创建
     function tryCreate(retries) {
       if (retries <= 0) return;
       if (!document.body) {
         setTimeout(function () { tryCreate(retries - 1); }, 500);
         return;
       }
-      var existing = document.getElementById("cn-maps-toolbar");
-      if (existing) return;
+      if (document.getElementById("cn-maps-toolbar")) return;
 
       var hass = getHass();
       if (!hass) {
@@ -251,7 +223,7 @@
         "position: fixed",
         "right: 16px",
         "bottom: 48px",
-        "z-index: 999",
+        "z-index: 99999",
         "display: flex",
         "flex-direction: column",
         "align-items: flex-end",
@@ -262,23 +234,25 @@
 
       // 收起/展开按钮
       var toggle = document.createElement("div");
-      toggle.textContent = "🗺";
+      toggle.textContent = "\u{1F5FA}";
       toggle.title = "切换地图底图";
       toggle.style.cssText = [
-        "width: 40px",
-        "height: 40px",
+        "width: 44px",
+        "height: 44px",
         "border-radius: 50%",
         "background: var(--card-background-color, #fff)",
         "border: 1px solid var(--divider-color, #ddd)",
-        "box-shadow: 0 2px 8px rgba(0,0,0,0.15)",
+        "box-shadow: 0 2px 8px rgba(0,0,0,0.2)",
         "display: flex",
         "align-items: center",
         "justify-content: center",
         "cursor: pointer",
-        "font-size: 20px",
+        "font-size: 22px",
         "user-select: none",
         "transition: transform 0.15s",
+        "line-height: 1",
       ].join(";");
+
       toggle.addEventListener("mouseenter", function () {
         toggle.style.transform = "scale(1.1)";
       });
@@ -298,9 +272,9 @@
         "background: var(--card-background-color, #fff)",
         "border: 1px solid var(--divider-color, #ddd)",
         "border-radius: 8px",
-        "box-shadow: 0 2px 12px rgba(0,0,0,0.15)",
+        "box-shadow: 0 2px 12px rgba(0,0,0,0.2)",
         "padding: 6px",
-        "max-height: 300px",
+        "max-height: 320px",
         "overflow-y: auto",
       ].join(";");
 
@@ -309,7 +283,7 @@
         btn.textContent = src.label;
         var isActive = src.key === CONFIG.source;
         btn.style.cssText = [
-          "padding: 6px 14px",
+          "padding: 8px 16px",
           "border-radius: 6px",
           "cursor: pointer",
           "white-space: nowrap",
@@ -324,34 +298,31 @@
         ].join(";");
 
         btn.addEventListener("mouseenter", function () {
-          if (!isActive) {
+          if (src.key !== CONFIG.source) {
             btn.style.background = "var(--secondary-background-color, #f0f0f0)";
           }
         });
         btn.addEventListener("mouseleave", function () {
-          if (!isActive) {
+          if (src.key !== CONFIG.source) {
             btn.style.background = "transparent";
           }
         });
         btn.addEventListener("click", function () {
-          if (isActive) {
+          if (src.key === CONFIG.source) {
             panel.style.display = "none";
             return;
           }
-          // 调用 HA 服务切换底图，然后刷新页面
+          // 调用 HA 服务切换底图
           btn.textContent = "切换中…";
-          hass.callService("cn_maps", "set_source", { source: src.key })
-            .then(function () {
-              if (CONFIG.autoReload !== false) {
-                location.reload();
-              }
-            })
-            .catch(function (err) {
-              if (CONFIG.debug) {
-                console.warn("[cn_maps] 切换底图失败：", err);
-              }
-              btn.textContent = src.label;
-            });
+          try {
+            hass.callService("cn_maps", "set_source", { source: src.key });
+          } catch (e) {
+            if (CONFIG.debug) console.warn("[cn_maps] callService 异常：", e);
+          }
+          // callService 可能不返回 Promise，用定时器等后端处理完再刷新
+          setTimeout(function () {
+            location.reload();
+          }, 800);
         });
 
         panel.appendChild(btn);
@@ -361,22 +332,13 @@
       toolbar.appendChild(toggle);
       document.body.appendChild(toolbar);
 
-      // 监听 SPA 路由变化，只在地图相关页面显示
-      function updateVisibility() {
-        toolbar.style.display = isMapPage() ? "flex" : "none";
+      if (CONFIG.debug) {
+        console.info("[cn_maps] 工具栏已创建，数据源：" + CONFIG.sources.length + " 个");
       }
-      updateVisibility();
-
-      // 监听 history 变化（SPA 路由）
-      var origPushState = history.pushState;
-      history.pushState = function () {
-        origPushState.apply(history, arguments);
-        setTimeout(updateVisibility, 100);
-      };
-      window.addEventListener("popstate", updateVisibility);
     }
 
-    tryCreate(10);
+    // 多试几次，等 HA 前端初始化完成
+    tryCreate(30);
   }
 
   /* ------------------------------------------- 设置变更后自动刷新一次 */
@@ -391,7 +353,6 @@
     !!nextVersion &&
     previousVersion !== nextVersion;
 
-  /** 运行时换一套配置（调试/高级用法） */
   function applyConfig(next) {
     if (next) {
       applyInjected(next, CONFIG);
@@ -411,11 +372,8 @@
   };
 
   console.info(
-    "[cn_maps] v" +
-      VERSION +
-      " 已加载：底图=" +
-      (CONFIG.sourceLabel || CONFIG.source || "?") +
-      "（瓦片与坐标纠偏都在 HA 服务端完成）"
+    "[cn_maps] v" + VERSION +
+    " 已加载：底图=" + (CONFIG.sourceLabel || CONFIG.source || "?")
   );
 
   // 创建工具栏
@@ -425,13 +383,9 @@
     Promise.resolve().then(function () {
       try {
         var key = "__cnMapsReloadedFor";
-        if (sessionStorage.getItem(key) === nextVersion) {
-          return;
-        }
+        if (sessionStorage.getItem(key) === nextVersion) return;
         sessionStorage.setItem(key, nextVersion);
-      } catch (err) {
-        // 隐私模式下 sessionStorage 会抛错，那就直接刷
-      }
+      } catch (err) {}
       if (CONFIG.debug) {
         console.info("[cn_maps] 配置已更新，刷新页面：", previousVersion, "->", nextVersion);
       }
