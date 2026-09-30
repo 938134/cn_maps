@@ -229,19 +229,22 @@
       groups.forEach(function (group) {
         if (group.querySelector(".cn-maps-switch-btn")) return; // 已注入
 
-        // 创建切换按钮，样式跟同组其它按钮一致
+        // 创建切换按钮，完全继承 MapLibre/Leaflet 控件组按钮样式
         var btn = document.createElement("button");
-        btn.className = "cn-maps-switch-btn";
+        btn.className = "cn-maps-switch-btn maplibregl-ctrl-icon";
         btn.type = "button";
+        btn.setAttribute("aria-label", "切换底图");
         btn.title = "切换底图：" + (CONFIG.sourceLabel || CONFIG.source || "");
-        btn.textContent = "\u{1F5FA}"; // 🗺
-        // 不用 inline style，让它继承同组按钮的样式
-        btn.style.cssText = "font-size: 16px; line-height: 1;";
+        // 用内联 SVG 做图标，尺寸跟 MapLibre 默认图标一致（20x20）
+        btn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" style="display:block;margin:auto">' +
+          '<path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 110-5 2.5 2.5 0 010 5z"/>' +
+          '</svg>';
+        // 不加任何 inline style，完全依赖同组按钮的 CSS
 
         btn.addEventListener("click", function (e) {
           e.preventDefault();
           e.stopPropagation();
-          showSourceMenu(group);
+          showSourceMenu(btn);
         });
 
         group.appendChild(btn);
@@ -251,7 +254,7 @@
       return injected;
     }
 
-    function showSourceMenu(anchorEl) {
+    function showSourceMenu(btnEl) {
       // 移除已有菜单
       var existing = document.getElementById("cn-maps-source-menu");
       if (existing) { existing.remove(); return; }
@@ -275,10 +278,10 @@
         "overflow-y: auto",
       ].join(";");
 
-      // 定位到按钮附近
-      var rect = anchorEl.getBoundingClientRect();
-      menu.style.right = (window.innerWidth - rect.right) + "px";
-      menu.style.bottom = (window.innerHeight - rect.top + 4) + "px";
+      // 定位到按钮正下方
+      var rect = btnEl.getBoundingClientRect();
+      menu.style.left = rect.left + "px";
+      menu.style.top = (rect.bottom + 4) + "px";
 
       CONFIG.sources.forEach(function (src) {
         var item = document.createElement("div");
