@@ -208,6 +208,20 @@
       containers.forEach(function (container) {
         if (container.querySelector(".cn-maps-switch-btn")) return; // 已注入
 
+        // 统一按钮配色：官方「切换分组/重置焦点」与本按钮都用实底背景，
+        // 观感与放大缩小按钮一致；颜色用 HA 主题变量，自动跟随亮暗模式
+        var rootNode = container.getRootNode();
+        if (rootNode && !rootNode.querySelector("#cn-maps-btn-style")) {
+          var styleEl = document.createElement("style");
+          styleEl.id = "cn-maps-btn-style";
+          styleEl.textContent =
+            "#buttons ha-icon-button{background-color:var(--card-background-color,#fff);" +
+            "color:var(--primary-text-color,#212121);border-radius:50%;" +
+            "box-shadow:0 0 0 2px rgba(0,0,0,.1)}" +
+            "#buttons ha-icon-button:hover{filter:brightness(.92)}";
+          (rootNode === document ? document.head : rootNode).appendChild(styleEl);
+        }
+
         // 创建与官方按钮同款的 ha-icon-button
         var btn = document.createElement("ha-icon-button");
         btn.className = "cn-maps-switch-btn";
@@ -230,6 +244,105 @@
         if (CONFIG.debug) console.info("[cn_maps] 切换按钮已注入官方按钮列");
       });
       return injected;
+    }
+
+    /** 从后端取最新配置（style.json 需要鉴权，带上 HA 的 access token） */
+    function fetchNewConfig() {
+      var headers = {};
+      try {
+        if (hass && hass.auth && hass.auth.data) {
+          headers.Authorization = "Bearer " + hass.auth.data.access_token;
+        }
+      } catch (e) {}
+      return fetch("/cn_maps/style.json", { headers: headers }).then(function (r) {
+        return r.ok ? r.json() : null;
+      });
+    }
+
+    /** 免刷新热切换：更新配置 + 让地图重载样式 */
+    function applyNewConfig(cfg) {
+      var tileTemplate = "";
+      try {
+        tileTemplate = cfg.styles.light.sources["cn-base"].tiles[0];
+      } catch (e) {}
+      if (!tileTemplate) return false;
+
+      var label = cfg.source || "";
+      (CONFIG.sources || []).forEach(function (s) {
+        if (s.key === cfg.source) label = s.label;
+      });
+
+      applyConfig({
+        fingerprint: cfg.fingerprint,
+        source: cfg.source,
+        sourceLabel: label,
+        tileTemplate: tileTemplate,
+        styles: cfg.styles,
+      });
+
+      // 引擎没有公开的「重载样式」接口，只有 setDarkMode(布尔)。
+      // 连续翻转两次（A→!A→A）：引擎内部的请求序号保证只有最后一次
+      // 生效，而最后一次 loadStyle 走我们的 fetch 钩子拿到新样式，
+      // 视觉上无闪烁、实体图层也不会丢。
+      var ok = false;
+      deepQueryAll(document, "ha-map").forEach(function (m) {
+        try {
+          var engine = m._engine;
+          if (engine && typeof engine.setDarkMode === "function") {
+            var cur = engine._requestedDarkMode;
+            if (cur === undefined && hass && hass.themes) {
+              cur = !!hass.themes.darkMode;
+            }
+            engine.setDarkMode(!cur);
+            engine.setDarkMode(!!cur);
+            ok = true;
+          }
+        } catch (e) {
+          if (CONFIG.debug) console.warn("[cn_maps] 热切换地图样式失败：", e);
+        }
+      });
+      return ok;
+    }
+
+    /** 切换数据源：调服务 → 轮询新配置 → 热切换；失败才整页刷新 */
+    function switchSource(srcKey, onDone) {
+      if (!hass) hass = getHass();
+      if (!hass) {
+        location.reload();
+        return;
+      }
+      try {
+        hass.callService("cn_maps", "set_source", { source: srcKey });
+      } catch (e) {
+        if (CONFIG.debug) console.warn("[cn_maps] callService 异常：", e);
+      }
+
+      var attempts = 0;
+      function poll() {
+        attempts++;
+        fetchNewConfig()
+          .then(function (cfg) {
+            if (cfg && cfg.fingerprint && cfg.fingerprint !== CONFIG.fingerprint) {
+              if (applyNewConfig(cfg)) {
+                if (CONFIG.debug) console.info("[cn_maps] 已热切换到 " + cfg.source);
+                if (onDone) onDone();
+                return;
+              }
+              location.reload(); // 热切换不可用，退回整页刷新
+              return;
+            }
+            if (attempts < 6) {
+              setTimeout(poll, 500);
+            } else {
+              location.reload(); // 后端迟迟没更新，退回整页刷新
+            }
+          })
+          .catch(function () {
+            if (attempts < 6) setTimeout(poll, 500);
+            else location.reload();
+          });
+      }
+      setTimeout(poll, 300);
     }
 
     function showSourceMenu(btnEl) {
@@ -286,14 +399,14 @@
           }
         });
         item.addEventListener("click", function () {
-          menu.remove();
-          if (src.key === CONFIG.source) return;
-          try {
-            hass.callService("cn_maps", "set_source", { source: src.key });
-          } catch (e) {
-            if (CONFIG.debug) console.warn("[cn_maps] callService 异常：", e);
+          if (src.key === CONFIG.source) {
+            menu.remove();
+            return;
           }
-          setTimeout(function () { location.reload(); }, 300);
+          item.textContent = "切换中…";
+          switchSource(src.key, function () {
+            menu.remove();
+          });
         });
 
         menu.appendChild(item);
