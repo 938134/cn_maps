@@ -199,7 +199,19 @@
     return null;
   }
 
-  /** 在右下角放一个浮动工具栏，始终显示 */
+  /** 判断当前是否在地图相关页面（HA 用 hash 路由） */
+  function isMapPage() {
+    var hash = (location.hash || "").replace(/^#\/?/, "");
+    // /map, /entity/*, /lovelace/* 都可能显示地图
+    return (
+      hash.indexOf("/map") !== -1 ||
+      hash.indexOf("/entity") !== -1 ||
+      hash.indexOf("/lovelace") !== -1 ||
+      hash.indexOf("/overview") !== -1
+    );
+  }
+
+  /** 在右下角放一个浮动工具栏，只在地图页面显示 */
   function createToolbar() {
     if (!CONFIG.sources || CONFIG.sources.length === 0) return;
 
@@ -312,14 +324,12 @@
             panel.style.display = "none";
             return;
           }
-          // 调用 HA 服务切换底图
           btn.textContent = "切换中…";
           try {
             hass.callService("cn_maps", "set_source", { source: src.key });
           } catch (e) {
             if (CONFIG.debug) console.warn("[cn_maps] callService 异常：", e);
           }
-          // callService 可能不返回 Promise，用短延迟等后端处理完再刷新
           setTimeout(function () {
             location.reload();
           }, 300);
@@ -332,12 +342,20 @@
       toolbar.appendChild(toggle);
       document.body.appendChild(toolbar);
 
+      // 根据当前页面决定是否显示
+      function updateVisibility() {
+        toolbar.style.display = isMapPage() ? "flex" : "none";
+      }
+      updateVisibility();
+
+      // 监听 hash 变化（HA SPA 路由）
+      window.addEventListener("hashchange", updateVisibility);
+
       if (CONFIG.debug) {
         console.info("[cn_maps] 工具栏已创建，数据源：" + CONFIG.sources.length + " 个");
       }
     }
 
-    // 多试几次，等 HA 前端初始化完成
     tryCreate(30);
   }
 
