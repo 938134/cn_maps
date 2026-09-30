@@ -2,19 +2,15 @@
  * cn_maps —— 把 Home Assistant 内置地图的底图换成国内地图源。
  *
  * 这是集成注入的「胶水」脚本，它做三件事：
- *
- *   1. 把 HA 内置的 /static/map/light.json、/static/map/dark.json 换成集成生成的
- *      样式（样式里的瓦片地址指向本集成在 HA 服务端的瓦片接口）；
- *   2. 在没有 WebGL2、HA 退回 Leaflet 光栅渲染的设备上，把内置的栅格瓦片地址
- *      （/api/map_tiles/raster/...，以及老版本 HA 的 CARTO 瓦片）换成同一套接口；
- *   3. 在页面右下角放一个浮动工具栏，可一键切换底图数据源。
+ *   1. 把 HA 内置的 /static/map/light.json、/static/map/dark.json 换成集成生成的样式；
+ *   2. 在没有 WebGL2 的设备上，把内置的栅格瓦片地址换成同一套接口；
+ *   3. 在地图自带的控件组里注入「切换底图」按钮，跟放大缩小按钮在一起。
  */
 (function () {
   "use strict";
 
   var VERSION = "2026.09.30";
 
-  /** 集成注入的配置（见 custom_components/cn_maps/runtime.py） */
   var CONFIG = {
     version: VERSION,
     fingerprint: "",
@@ -40,19 +36,11 @@
 
   applyInjected(INJECTED, CONFIG);
 
-  var stats = {
-    styleHits: 0,
-    rasterTiles: 0,
-    cartoTiles: 0,
-    errors: [],
-  };
-
+  var stats = { styleHits: 0, rasterTiles: 0, cartoTiles: 0, errors: [] };
   window.__cnMapsStats = stats;
 
   if (!CONFIG.styles || !CONFIG.styles.light) {
-    console.warn(
-      "[cn_maps] 没有拿到集成注入的配置，脚本不生效。"
-    );
+    console.warn("[cn_maps] 没有拿到集成注入的配置，脚本不生效。");
     window.cnMaps = { version: VERSION, active: false, stats: stats };
     return;
   }
@@ -60,24 +48,17 @@
   /* ------------------------------------------------------------------ 工具 */
 
   function instanceOrigin() {
-    if (typeof location !== "undefined" && location.origin) {
-      return location.origin;
-    }
+    if (typeof location !== "undefined" && location.origin) return location.origin;
     return "";
   }
 
   function absolutize(template) {
-    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(template)) {
-      return template;
-    }
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(template)) return template;
     return instanceOrigin() + (template.charAt(0) === "/" ? "" : "/") + template;
   }
 
   function tileUrl(z, x, y) {
-    return CONFIG.tileTemplate
-      .replace("{z}", z)
-      .replace("{x}", x)
-      .replace("{y}", y);
+    return CONFIG.tileTemplate.replace("{z}", z).replace("{x}", x).replace("{y}", y);
   }
 
   /* ------------------------------------------------------- 1. 换地图样式 */
@@ -103,9 +84,7 @@
     var match = STYLE_RE.exec(url);
     if (!match) return null;
     var name = match[1];
-    if (!preparedStyles[name]) {
-      preparedStyles[name] = prepareStyle(name);
-    }
+    if (!preparedStyles[name]) preparedStyles[name] = prepareStyle(name);
     return preparedStyles[name];
   }
 
@@ -131,10 +110,7 @@
 
   /* ---------------------------------------------------------- 装钩子 */
 
-  var nativeFetch =
-    typeof window !== "undefined" && window.fetch
-      ? window.fetch.bind(window)
-      : null;
+  var nativeFetch = typeof window !== "undefined" && window.fetch ? window.fetch.bind(window) : null;
 
   function requestUrl(input) {
     if (typeof input === "string") return input;
@@ -149,9 +125,6 @@
         var style = styleFor(url);
         if (style) {
           stats.styleHits++;
-          if (CONFIG.debug) {
-            console.info("[cn_maps] 已接管地图样式：", url, "->", CONFIG.sourceLabel);
-          }
           return Promise.resolve(
             new Response(JSON.stringify(style), {
               status: 200,
@@ -164,19 +137,14 @@
     };
   }
 
-  var imgProto =
-    typeof HTMLImageElement !== "undefined" ? HTMLImageElement.prototype : null;
-  var srcDescriptor = imgProto
-    ? Object.getOwnPropertyDescriptor(imgProto, "src")
-    : null;
+  var imgProto = typeof HTMLImageElement !== "undefined" ? HTMLImageElement.prototype : null;
+  var srcDescriptor = imgProto ? Object.getOwnPropertyDescriptor(imgProto, "src") : null;
 
   if (srcDescriptor && srcDescriptor.set && srcDescriptor.get) {
     Object.defineProperty(imgProto, "src", {
       configurable: true,
       enumerable: srcDescriptor.enumerable,
-      get: function () {
-        return srcDescriptor.get.call(this);
-      },
+      get: function () { return srcDescriptor.get.call(this); },
       set: function (value) {
         var next = rewriteTileUrl(value);
         srcDescriptor.set.call(this, next || value);
@@ -184,179 +152,196 @@
     });
   }
 
-  /* ------------------------------------------------------- 3. 工具栏 */
+  /* ------------------------------------------------------- 3. 注入地图控件 */
 
-  /** 从 HA 前端获取 hass 对象（用于调用服务） */
   function getHass() {
     var el = document.querySelector("home-assistant");
     if (el && el.hass) return el.hass;
-    // 兼容：尝试 shadow DOM 里的子元素
     if (el && el.shadowRoot) {
-      var inner = el.shadowRoot.querySelector("home-assistant-main") ||
-                   el.shadowRoot.querySelector("ha-panel");
+      var inner = el.shadowRoot.querySelector("home-assistant-main") || el.shadowRoot.querySelector("ha-panel");
       if (inner && inner.hass) return inner.hass;
     }
     return null;
   }
 
-  /** 判断当前是否在地图相关页面（HA 用 hash 路由） */
-  function isMapPage() {
-    var hash = (location.hash || "").replace(/^#\/?/, "");
-    // /map, /entity/*, /lovelace/* 都可能显示地图
-    return (
-      hash.indexOf("/map") !== -1 ||
-      hash.indexOf("/entity") !== -1 ||
-      hash.indexOf("/lovelace") !== -1 ||
-      hash.indexOf("/overview") !== -1
-    );
-  }
-
-  /** 在右下角放一个浮动工具栏，只在地图页面显示 */
-  function createToolbar() {
+  /**
+   * 用 MutationObserver 监听地图控件出现，把「切换底图」按钮注入到控件组里。
+   * MapLibre 的控件组是 .maplibregl-ctrl-group，Leaflet 是 .leaflet-control-zoom。
+   * 这样按钮自然跟着地图走：地图在就在，地图不在就不在。
+   */
+  function injectMapButton() {
     if (!CONFIG.sources || CONFIG.sources.length === 0) return;
 
-    function tryCreate(retries) {
-      if (retries <= 0) return;
-      if (!document.body) {
-        setTimeout(function () { tryCreate(retries - 1); }, 500);
-        return;
-      }
-      if (document.getElementById("cn-maps-toolbar")) return;
+    var hass = null;
+    var observer = null;
 
-      var hass = getHass();
-      if (!hass) {
-        setTimeout(function () { tryCreate(retries - 1); }, 1000);
-        return;
-      }
+    // 查找地图控件组的 CSS 选择器
+    var CTRL_SELECTORS = ".maplibregl-ctrl-group, .leaflet-control-zoom";
 
-      var toolbar = document.createElement("div");
-      toolbar.id = "cn-maps-toolbar";
-      toolbar.style.cssText = [
+    function findControlGroup() {
+      // 先在 document 里找
+      var el = document.querySelector(CTRL_SELECTORS);
+      if (el) return el;
+      // 再在 shadow DOM 里找
+      var ha = document.querySelector("home-assistant");
+      if (ha && ha.shadowRoot) {
+        el = ha.shadowRoot.querySelector(CTRL_SELECTORS);
+        if (el) return el;
+        var main = ha.shadowRoot.querySelector("home-assistant-main");
+        if (main && main.shadowRoot) {
+          el = main.shadowRoot.querySelector(CTRL_SELECTORS);
+          if (el) return el;
+          // Lovelace 卡片可能在更深处
+          var panel = main.shadowRoot.querySelector("ha-panel-lovelace");
+          if (panel && panel.shadowRoot) {
+            el = panel.shadowRoot.querySelector(CTRL_SELECTORS);
+            if (el) return el;
+          }
+        }
+      }
+      return null;
+    }
+
+    function deepQueryAll(root, selector) {
+      var results = [];
+      if (!root) return results;
+      // 先查当前层
+      root.querySelectorAll && root.querySelectorAll(selector).forEach(function (el) {
+        results.push(el);
+      });
+      // 递归 shadow DOM
+      root.querySelectorAll && root.querySelectorAll("*").forEach(function (el) {
+        if (el.shadowRoot) {
+          deepQueryAll(el.shadowRoot, selector).forEach(function (r) {
+            results.push(r);
+          });
+        }
+      });
+      return results;
+    }
+
+    function tryInject() {
+      // 深度查找所有地图控件组
+      var groups = deepQueryAll(document, CTRL_SELECTORS);
+      if (groups.length === 0) return false;
+
+      var injected = false;
+      groups.forEach(function (group) {
+        if (group.querySelector(".cn-maps-switch-btn")) return; // 已注入
+
+        // 创建切换按钮，样式跟同组其它按钮一致
+        var btn = document.createElement("button");
+        btn.className = "cn-maps-switch-btn";
+        btn.type = "button";
+        btn.title = "切换底图：" + (CONFIG.sourceLabel || CONFIG.source || "");
+        btn.textContent = "\u{1F5FA}"; // 🗺
+        // 不用 inline style，让它继承同组按钮的样式
+        btn.style.cssText = "font-size: 16px; line-height: 1;";
+
+        btn.addEventListener("click", function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          showSourceMenu(group);
+        });
+
+        group.appendChild(btn);
+        injected = true;
+        if (CONFIG.debug) console.info("[cn_maps] 切换按钮已注入到地图控件组");
+      });
+      return injected;
+    }
+
+    function showSourceMenu(anchorEl) {
+      // 移除已有菜单
+      var existing = document.getElementById("cn-maps-source-menu");
+      if (existing) { existing.remove(); return; }
+
+      if (!hass) hass = getHass();
+      if (!hass) return;
+
+      var menu = document.createElement("div");
+      menu.id = "cn-maps-source-menu";
+      menu.style.cssText = [
         "position: fixed",
-        "right: 16px",
-        "bottom: 48px",
         "z-index: 99999",
-        "display: flex",
-        "flex-direction: column",
-        "align-items: flex-end",
-        "gap: 6px",
-        "font-family: var(--primary-font-family, sans-serif)",
-        "font-size: 13px",
-      ].join(";");
-
-      // 收起/展开按钮
-      var toggle = document.createElement("div");
-      toggle.textContent = "\u{1F5FA}";
-      toggle.title = "切换地图底图";
-      toggle.style.cssText = [
-        "width: 44px",
-        "height: 44px",
-        "border-radius: 50%",
-        "background: var(--card-background-color, #fff)",
-        "border: 1px solid var(--divider-color, #ddd)",
-        "box-shadow: 0 2px 8px rgba(0,0,0,0.2)",
-        "display: flex",
-        "align-items: center",
-        "justify-content: center",
-        "cursor: pointer",
-        "font-size: 22px",
-        "user-select: none",
-        "transition: transform 0.15s",
-        "line-height: 1",
-      ].join(";");
-
-      toggle.addEventListener("mouseenter", function () {
-        toggle.style.transform = "scale(1.1)";
-      });
-      toggle.addEventListener("mouseleave", function () {
-        toggle.style.transform = "scale(1)";
-      });
-      toggle.addEventListener("click", function () {
-        panel.style.display = panel.style.display === "none" ? "flex" : "none";
-      });
-
-      // 源列表面板
-      var panel = document.createElement("div");
-      panel.style.cssText = [
-        "display: none",
-        "flex-direction: column",
-        "gap: 4px",
         "background: var(--card-background-color, #fff)",
         "border: 1px solid var(--divider-color, #ddd)",
         "border-radius: 8px",
         "box-shadow: 0 2px 12px rgba(0,0,0,0.2)",
-        "padding: 6px",
+        "padding: 4px",
+        "font-family: var(--primary-font-family, sans-serif)",
+        "font-size: 13px",
         "max-height: 320px",
         "overflow-y: auto",
       ].join(";");
 
+      // 定位到按钮附近
+      var rect = anchorEl.getBoundingClientRect();
+      menu.style.right = (window.innerWidth - rect.right) + "px";
+      menu.style.bottom = (window.innerHeight - rect.top + 4) + "px";
+
       CONFIG.sources.forEach(function (src) {
-        var btn = document.createElement("div");
-        btn.textContent = src.label;
+        var item = document.createElement("div");
+        item.textContent = src.label;
         var isActive = src.key === CONFIG.source;
-        btn.style.cssText = [
+        item.style.cssText = [
           "padding: 8px 16px",
           "border-radius: 6px",
           "cursor: pointer",
           "white-space: nowrap",
-          "background: " + (isActive
-            ? "var(--primary-color, #03a9f4)"
-            : "transparent"),
-          "color: " + (isActive
-            ? "var(--text-primary-color, #fff)"
-            : "var(--primary-text-color, #333)"),
+          "background: " + (isActive ? "var(--primary-color, #03a9f4)" : "transparent"),
+          "color: " + (isActive ? "var(--text-primary-color, #fff)" : "var(--primary-text-color, #333)"),
           "font-weight: " + (isActive ? "600" : "400"),
-          "transition: background 0.15s",
         ].join(";");
 
-        btn.addEventListener("mouseenter", function () {
+        item.addEventListener("mouseenter", function () {
           if (src.key !== CONFIG.source) {
-            btn.style.background = "var(--secondary-background-color, #f0f0f0)";
+            item.style.background = "var(--secondary-background-color, #f0f0f0)";
           }
         });
-        btn.addEventListener("mouseleave", function () {
+        item.addEventListener("mouseleave", function () {
           if (src.key !== CONFIG.source) {
-            btn.style.background = "transparent";
+            item.style.background = "transparent";
           }
         });
-        btn.addEventListener("click", function () {
-          if (src.key === CONFIG.source) {
-            panel.style.display = "none";
-            return;
-          }
-          btn.textContent = "切换中…";
+        item.addEventListener("click", function () {
+          menu.remove();
+          if (src.key === CONFIG.source) return;
           try {
             hass.callService("cn_maps", "set_source", { source: src.key });
           } catch (e) {
             if (CONFIG.debug) console.warn("[cn_maps] callService 异常：", e);
           }
-          setTimeout(function () {
-            location.reload();
-          }, 300);
+          setTimeout(function () { location.reload(); }, 300);
         });
 
-        panel.appendChild(btn);
+        menu.appendChild(item);
       });
 
-      toolbar.appendChild(panel);
-      toolbar.appendChild(toggle);
-      document.body.appendChild(toolbar);
+      document.body.appendChild(menu);
 
-      // 根据当前页面决定是否显示
-      function updateVisibility() {
-        toolbar.style.display = isMapPage() ? "flex" : "none";
-      }
-      updateVisibility();
-
-      // 监听 hash 变化（HA SPA 路由）
-      window.addEventListener("hashchange", updateVisibility);
-
-      if (CONFIG.debug) {
-        console.info("[cn_maps] 工具栏已创建，数据源：" + CONFIG.sources.length + " 个");
-      }
+      // 点击外部关闭菜单
+      setTimeout(function () {
+        function close(e) {
+          if (!menu.contains(e.target)) {
+            menu.remove();
+            document.removeEventListener("click", close);
+          }
+        }
+        document.addEventListener("click", close);
+      }, 10);
     }
 
-    tryCreate(30);
+    // 用 MutationObserver 监听 DOM 变化，地图控件一出现就注入
+    observer = new MutationObserver(function () {
+      tryInject();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    // 立即试一次（地图可能已经渲染了）
+    setTimeout(function () { tryInject(); }, 500);
+
+    if (CONFIG.debug) console.info("[cn_maps] 开始监听地图控件，准备注入切换按钮");
   }
 
   /* ------------------------------------------- 设置变更后自动刷新一次 */
@@ -394,8 +379,8 @@
     " 已加载：底图=" + (CONFIG.sourceLabel || CONFIG.source || "?")
   );
 
-  // 创建工具栏
-  createToolbar();
+  // 注入地图切换按钮
+  injectMapButton();
 
   if (shouldReload) {
     Promise.resolve().then(function () {
@@ -404,9 +389,6 @@
         if (sessionStorage.getItem(key) === nextVersion) return;
         sessionStorage.setItem(key, nextVersion);
       } catch (err) {}
-      if (CONFIG.debug) {
-        console.info("[cn_maps] 配置已更新，刷新页面：", previousVersion, "->", nextVersion);
-      }
       location.reload();
     });
   }
