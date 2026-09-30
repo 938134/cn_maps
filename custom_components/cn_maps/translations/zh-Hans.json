@@ -1,0 +1,85 @@
+{
+    "title": "中国地图",
+    "config": {
+      "step": {
+        "user": {
+          "title": "选择底图数据源",
+          "description": "集成会把 Home Assistant 内置地图（地图面板、地图卡片、实体详情里的小地图）的底图换成你选的数据源。瓦片由 HA 服务端代取、坐标纠偏也在服务端完成，所以手机 App 与网页看到的地图完全一致，密钥也不会下发到浏览器。\n\n只有天地图需要 API Key（免费申请，应用类型选「浏览器端」），其它数据源留空即可。以后想换数据源或调纠偏，到「设置 → 设备与服务 → 中国地图 → 配置」里改，也可以直接用地图右下角的工具栏快速切换。",
+          "data": {
+            "map_source": "数据源",
+            "api_key": "API Key"
+          },
+          "data_description": {
+            "map_source": "高德 / 腾讯 / 百度不需要 Key；天地图的矢量、影像、地形共用同一个 Key。",
+            "api_key": "填当前选中数据源的 Key。只保存在 HA 服务端，不会下发到浏览器。"
+          }
+        }
+      },
+      "abort": {
+        "single_instance_allowed": "底图是全局设置，只能有一个实例。请到已有实例的「配置」里修改。"
+      },
+      "error": {
+        "key_required": "所选数据源必须填写 API Key。",
+        "invalid_key": "API Key 无效或已过期，请检查后重试。",
+        "cannot_connect": "校验服务器暂时连不上，请检查 HA 主机的网络后重试。"
+      }
+    },
+    "options": {
+      "step": {
+        "init": {
+          "title": "中国地图设置",
+          "menu_options": {
+            "basic": "基础设置：数据源与纠偏",
+            "advanced": "高级设置：显示与调试",
+            "reset": "恢复默认设置"
+          }
+        },
+        "basic": {
+          "title": "基础设置",
+          "description": "选数据源、填 Key、调纠偏。保存后前端会自动刷新一次。",
+          "data": {
+            "map_source": "数据源",
+            "api_key": "API Key",
+            "fix_china_offset": "坐标纠偏",
+            "precise_offset": "像素级精确纠偏"
+          },
+          "data_description": {
+            "map_source": "切换数据源不会丢掉已填好的 Key。也可以在地图界面右下角的工具栏里直接切换。",
+            "api_key": "填当前选中数据源的 Key；不需要 Key 的数据源留空即可。",
+            "fix_china_offset": "国内地图用 GCJ-02 / BD-09 坐标，HA 的实体是 WGS84。打开纠偏后瓦片会反向平移，路网与实体才对齐（默认开）。",
+            "precise_offset": "打开时每张瓦片最多拼 4 张源图（最准）；关掉只取 1 张，省 CPU，位置精度降到一张瓦片（z18 约 ±300 米）。"
+          }
+        },
+        "advanced": {
+          "title": "高级设置",
+          "description": "一般不用改。",
+          "data": {
+            "darken_in_dark_mode": "暗色模式下压暗底图",
+            "debug": "打印排障日志",
+            "auto_reload": "设置变更后自动刷新前端"
+          },
+          "data_description": {
+            "darken_in_dark_mode": "栅格底图没有暗色版本。HA 暗色主题下底图太亮时打开这个开关。",
+            "debug": "在 HA 日志里打印上游请求失败的原因。",
+            "auto_reload": "关掉后改完设置需要自己按 F5。"
+          }
+        },
+        "reset": {
+          "title": "恢复默认设置",
+          "description": "把所有选项恢复成默认值（数据源回到高德路网图，纠偏打开）。已经填好的 Key 会保留，不用重新申请。",
+          "data": {
+            "confirm": "确认恢复默认"
+          }
+        }
+      },
+      "abort": {
+        "reset_cancelled": "已取消，设置没有变动。"
+      },
+      "error": {
+        "key_required": "所选数据源必须填写 API Key。",
+        "invalid_key": "API Key 无效或已过期，请检查后重试。",
+        "cannot_connect": "校验服务器暂时连不上，请检查 HA 主机的网络后重试。"
+      }
+    }
+  }
+  

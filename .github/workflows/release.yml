@@ -1,0 +1,141 @@
+name: 构建和发布
+
+env:
+  PACKAGE_NAME: cn_maps
+  ZIP_NAME: cn-maps.zip
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 设置环境变量
+        run: |
+          INTEGRATION_DIR="custom_components/${{ env.PACKAGE_NAME }}"
+          echo "INTEGRATION_DIR=$INTEGRATION_DIR" >> $GITHUB_ENV
+
+      - name: 同步标签
+        run: |
+          git fetch --tags --force
+          echo "今日已有标签:"
+          git tag -l "v$(date +%Y%m%d)*" | sort -V || true
+
+      - name: 计算版本号
+        id: version_calc
+        run: |
+          export TZ=Asia/Shanghai
+          DATE_PATTERN="$(date +%Y%m%d)"
+          TAG_PREFIX="v${DATE_PATTERN}"
+
+          MAX_NUM=$(git tag -l "${TAG_PREFIX}*" | grep -oE '[0-9]{2}$' | sort -nr | head -1)
+          MAX_NUM=${MAX_NUM:-0}
+          NEXT_NUM=$((10#$MAX_NUM + 1))
+          NEW_VERSION="${TAG_PREFIX}$(printf '%02d' $NEXT_NUM)"
+
+          # 同时算出 manifest.json 用的版本号（YYYY.MM.DD 格式）
+          MANIFEST_VERSION="$(date +%Y.%m.%d)"
+
+          echo "新版本: $NEW_VERSION"
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "manifest_version=$MANIFEST_VERSION" >> $GITHUB_OUTPUT
+
+      - name: 同步 manifest 版本号
+        run: |
+          cd "$INTEGRATION_DIR"
+          # 更新 manifest.json 中的 version 字段
+          python3 -c "
+          import json
+          with open('manifest.json', 'r', encoding='utf-8') as f:
+              data = json.load(f)
+          data['version'] = '${{ steps.version_calc.outputs.manifest_version }}'
+          with open('manifest.json', 'w', encoding='utf-8') as f:
+              json.dump(data, f, indent=2, ensure_ascii=False)
+              f.write('\n')
+          print(f'manifest.json version -> {data[\"version\"]}')
+          "
+
+      - name: 清理已有发布
+        if: always()
+        continue-on-error: true
+        run: |
+          if gh release view "${{ steps.version_calc.outputs.version }}" >/dev/null 2>&1; then
+            echo "发现同名发布，正在删除..."
+            gh release delete "${{ steps.version_calc.outputs.version }}" --cleanup-tag -y
+            echo "已删除同名发布"
+          else
+            echo "没有找到同名发布，跳过删除"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 打包集成
+        run: |
+          if [ ! -d "$INTEGRATION_DIR" ]; then
+            echo "错误: 集成目录 '$INTEGRATION_DIR' 不存在!"
+            exit 1
+          fi
+
+          zip -r "${{ env.ZIP_NAME }}" "$INTEGRATION_DIR" \
+            -x "*/__pycache__/*" "*/.git*" "*.pyc" "*.log" "*.tmp"
+
+          if [ ! -f "${{ env.ZIP_NAME }}" ]; then
+            echo "错误: ZIP文件创建失败!"
+            exit 1
+          fi
+
+          echo "打包完成: ${{ env.ZIP_NAME }}"
+          ls -la "${{ env.ZIP_NAME }}"
+
+      - name: 获取构建时间
+        id: get_date
+        run: |
+          BUILD_DATE=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          echo "build_date=$BUILD_DATE" >> $GITHUB_OUTPUT
+
+      - name: 创建发布
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "${{ env.ZIP_NAME }}"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: "${{ steps.version_calc.outputs.version }}"
+          name: "Release ${{ steps.version_calc.outputs.version }}"
+          body: |
+            ### 🗺️ 中国地图集成
+
+            把 Home Assistant 内置地图底图换成高德/腾讯/百度/天地图
+
+            ### 📦 安装说明
+            1. 下载下方的 **${{ env.ZIP_NAME }}** 文件
+            2. 通过 HACS 自定义仓库安装
+            3. 或手动解压到 `custom_components/` 目录
+
+            ### ℹ️ 集成信息
+            - 版本: ${{ steps.version_calc.outputs.manifest_version }}
+            - 构建日期: ${{ steps.get_date.outputs.build_date }}
+          makeLatest: true
+          skipIfReleaseExists: true
+
+      - name: 清理临时文件
+        if: always()
+        run: |
+          if [ -f "${{ env.ZIP_NAME }}" ]; then
+            rm -f "${{ env.ZIP_NAME }}"
+            echo "已清理临时文件"
+          fi
+
+      - name: 发布完成
+        run: |
+          echo "🎉 发布成功!"
+          echo "📦 包名称: ${{ env.PACKAGE_NAME }}"
+          echo "🏷️ 版本号: ${{ steps.version_calc.outputs.version }}"
+          echo "📁 文件: ${{ env.ZIP_NAME }}"

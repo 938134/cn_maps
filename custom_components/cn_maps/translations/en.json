@@ -1,0 +1,85 @@
+{
+    "title": "China Maps",
+    "config": {
+      "step": {
+        "user": {
+          "title": "Choose a base map",
+          "description": "This integration replaces the base map of Home Assistant's built-in map (map panel, map card and the small map in entity details) with a Chinese map provider.\n\nTiles are fetched by the Home Assistant server, and the China datum shift is applied there too, so the Home Assistant app and the web UI show identical maps and no API key is ever sent to the browser. Only Tianditu needs an API key (free of charge, choose the \"browser\" application type); leave the field empty for the other providers.",
+          "data": {
+            "map_source": "Map source",
+            "api_key": "API key"
+          },
+          "data_description": {
+            "map_source": "AMap / Tencent / Baidu need no key. The vector, image and terrain Tianditu layers share one key. You can also switch sources directly from the toolbar in the bottom-right corner of the map.",
+            "api_key": "Key of the currently selected source. Stored on the Home Assistant server only."
+          }
+        }
+      },
+      "abort": {
+        "single_instance_allowed": "The base map is a global setting, so only one instance is allowed. Change it in the existing entry's options."
+      },
+      "error": {
+        "key_required": "The selected map source requires an API key.",
+        "invalid_key": "The API key is invalid or expired.",
+        "cannot_connect": "Could not reach the validation server. Check the network of your Home Assistant host."
+      }
+    },
+    "options": {
+      "step": {
+        "init": {
+          "title": "China Maps options",
+          "menu_options": {
+            "basic": "Basic: map source and offset fix",
+            "advanced": "Advanced: display and debug",
+            "reset": "Restore defaults"
+          }
+        },
+        "basic": {
+          "title": "Basic settings",
+          "description": "Pick a map source, enter its key and tune the offset fix. The frontend reloads itself after saving.",
+          "data": {
+            "map_source": "Map source",
+            "api_key": "API key",
+            "fix_china_offset": "Fix China datum offset",
+            "precise_offset": "Pixel-accurate offset fix"
+          },
+          "data_description": {
+            "map_source": "Switching the source keeps the keys you already entered. You can also switch from the toolbar in the map view.",
+            "api_key": "Key of the currently selected source; leave empty when the source needs none.",
+            "fix_china_offset": "Chinese map services use GCJ-02 / BD-09 while Home Assistant entities are WGS84. With the fix enabled the tiles are shifted back so roads and entities line up (default on).",
+            "precise_offset": "On: up to 4 upstream tiles are stitched per tile (most accurate). Off: a single tile is fetched (cheaper, accuracy drops to one tile, about ±300 m at z18)."
+          }
+        },
+        "advanced": {
+          "title": "Advanced settings",
+          "description": "Usually no change needed.",
+          "data": {
+            "darken_in_dark_mode": "Darken the base map in dark mode",
+            "debug": "Log upstream failures",
+            "auto_reload": "Reload the frontend after changes"
+          },
+          "data_description": {
+            "darken_in_dark_mode": "Raster tiles have no dark variant. Enable this when the map is too bright in Home Assistant's dark theme.",
+            "debug": "Print the reason of failed upstream requests to the Home Assistant log.",
+            "auto_reload": "When disabled you have to press F5 after changing settings."
+          }
+        },
+        "reset": {
+          "title": "Restore defaults",
+          "description": "Reset every option to its default (AMap road map, offset fix on). The keys you entered are kept.",
+          "data": {
+            "confirm": "Yes, restore defaults"
+          }
+        }
+      },
+      "abort": {
+        "reset_cancelled": "Cancelled, nothing changed."
+      },
+      "error": {
+        "key_required": "The selected map source requires an API key.",
+        "invalid_key": "The API key is invalid or expired.",
+        "cannot_connect": "Could not reach the validation server. Check the network of your Home Assistant host."
+      }
+    }
+  }
+  
