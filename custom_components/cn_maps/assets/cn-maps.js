@@ -319,10 +319,10 @@
           } catch (e) {
             if (CONFIG.debug) console.warn("[cn_maps] callService 异常：", e);
           }
-          // callService 可能不返回 Promise，用定时器等后端处理完再刷新
+          // callService 可能不返回 Promise，用短延迟等后端处理完再刷新
           setTimeout(function () {
             location.reload();
-          }, 800);
+          }, 300);
         });
 
         panel.appendChild(btn);

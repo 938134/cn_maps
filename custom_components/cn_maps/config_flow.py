@@ -1,14 +1,14 @@
 """配置流 + 选项流 + 表单 schema + Key 校验。
 
-合并了原来的 config_flow.py、options_flow.py、schemas.py、validation.py 四个文件。
-选项流只有一页表单（数据源 + Key + 纠偏），高级参数走默认值。
+选项流只有一页：数据源 + 天地图 Key + 纠偏开关。
+天地图 Key 统一配置，切换到高德/腾讯/百度时不会丢失。
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Iterable, Mapping
+from typing import Any, Mapping
 
 import voluptuous as vol
 
@@ -20,7 +20,6 @@ from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import (
-    BASIC_FIELDS,
     CONF_API_KEY,
     CONF_FIX_CHINA_OFFSET,
     CONF_KEYS,
@@ -30,8 +29,8 @@ from .const import (
     DOMAIN,
     NAME,
 )
-from .runtime import api_key_for, normalize_options
-from .sources import SOURCES, get_source, MapSource
+from .runtime import normalize_options
+from .sources import SOURCES, get_source
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -42,49 +41,52 @@ _SOURCE_OPTIONS = [
     for source in SOURCES.values()
 ]
 
-
-def _source_selector() -> selector.SelectSelector:
-    return selector.SelectSelector(
-        selector.SelectSelectorConfig(
-            options=_SOURCE_OPTIONS,
-            mode=selector.SelectSelectorMode.DROPDOWN,
-        )
-    )
+# 天地图 Key 的标识（唯一需要 Key 的数据源）
+_TIANDITU_KEY = "tianditu"
 
 
-def _selector_for(key: str) -> Any:
-    """布尔开关。"""
-    return selector.BooleanSelector()
-
-
-def _field(key: str, options: Mapping[str, Any]) -> Any:
-    value = options.get(key, DEFAULT_OPTIONS.get(key))
-    return vol.Optional(key, default=bool(value))
-
-
-def form_schema(
-    options: Mapping[str, Any] | None,
-    fields: Iterable[str] = (),
-    *,
-    include_source: bool = True,
-) -> vol.Schema:
-    """数据源 + API Key + 指定的其它字段。"""
+def _options_schema(options: Mapping[str, Any] | None) -> vol.Schema:
+    """统一的表单：数据源 + 天地图 Key + 纠偏开关。"""
     options = options or {}
     current = get_source(options.get(CONF_MAP_SOURCE))
+    existing_key = str((options.get(CONF_KEYS) or {}).get(_TIANDITU_KEY, ""))
 
-    data: dict[Any, Any] = {}
-    if include_source:
-        data[vol.Required(CONF_MAP_SOURCE, default=current.key)] = _source_selector()
-        data[vol.Optional(CONF_API_KEY, default=api_key_for(options, current))] = (
-            selector.TextSelector(
-                selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+    return vol.Schema({
+        vol.Required(CONF_MAP_SOURCE, default=current.key): selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=_SOURCE_OPTIONS,
+                mode=selector.SelectSelectorMode.DROPDOWN,
             )
-        )
-    for key in fields:
-        if key == CONF_MAP_SOURCE:
-            continue
-        data[_field(key, options)] = _selector_for(key)
-    return vol.Schema(data)
+        ),
+        vol.Optional(CONF_API_KEY, default=existing_key): selector.TextSelector(
+            selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+        ),
+        vol.Optional(CONF_FIX_CHINA_OFFSET, default=bool(
+            options.get(CONF_FIX_CHINA_OFFSET, True)
+        )): selector.BooleanSelector(),
+        vol.Optional(CONF_PRECISE_OFFSET, default=bool(
+            options.get(CONF_PRECISE_OFFSET, True)
+        )): selector.BooleanSelector(),
+    })
+
+
+def _save_options(user_input: dict, base: Mapping[str, Any] | None = None) -> dict:
+    """把表单输入转成规范选项。"""
+    base = dict(base or {})
+    source = get_source(user_input.get(CONF_MAP_SOURCE))
+    key = str(user_input.get(CONF_API_KEY) or "").strip()
+
+    keys = dict(base.get(CONF_KEYS) or {})
+    if key:
+        keys[_TIANDITU_KEY] = key
+    else:
+        keys.pop(_TIANDITU_KEY, None)
+
+    base[CONF_MAP_SOURCE] = source.key
+    base[CONF_KEYS] = keys
+    base[CONF_FIX_CHINA_OFFSET] = bool(user_input.get(CONF_FIX_CHINA_OFFSET, True))
+    base[CONF_PRECISE_OFFSET] = bool(user_input.get(CONF_PRECISE_OFFSET, True))
+    return normalize_options(base)
 
 
 # ============================================================ Key 校验
@@ -94,10 +96,11 @@ _TIANDITU_PROBE = "https://t0.tianditu.gov.cn/DataServer?T=vec_w&X=0&Y=0&L=1&tk=
 _INVALID_MARKERS = ("301001", "301002", "301003", "非法", "invalid", "Invalid")
 
 
-async def async_validate_key(
-    hass: HomeAssistant, source: MapSource, key: str
+async def _validate_tianditu_key(
+    hass: HomeAssistant, source_key: str, key: str
 ) -> str | None:
-    """返回错误码（None = 通过）。"""
+    """选天地图时校验 Key；选其它数据源时跳过。"""
+    source = get_source(source_key)
     if not source.needs_key:
         return None
 
@@ -105,13 +108,6 @@ async def async_validate_key(
     if not key:
         return "key_required"
 
-    if source.key_name == "tianditu":
-        return await _check_tianditu(hass, key)
-
-    return None
-
-
-async def _check_tianditu(hass: HomeAssistant, key: str) -> str | None:
     session = async_get_clientsession(hass)
     try:
         async with session.get(
@@ -156,28 +152,22 @@ class CnMapsConfigFlow(ConfigFlow, domain=DOMAIN):
 
         errors: dict[str, str] = {}
         if user_input is not None:
-            source = get_source(user_input.get(CONF_MAP_SOURCE))
             key = str(user_input.get(CONF_API_KEY) or "").strip()
-
-            error = await async_validate_key(self.hass, source, key)
+            error = await _validate_tianditu_key(
+                self.hass, user_input.get(CONF_MAP_SOURCE, ""), key
+            )
             if error:
                 errors[CONF_API_KEY] = error
             else:
-                options = normalize_options(
-                    {
-                        CONF_MAP_SOURCE: source.key,
-                        CONF_KEYS: (
-                            {source.key_name: key} if source.key_name and key else {}
-                        ),
-                    }
-                )
+                options = _save_options(user_input)
+                source = get_source(options[CONF_MAP_SOURCE])
                 return self.async_create_entry(
                     title=f"{NAME} · {source.label}", data={}, options=options
                 )
 
         return self.async_show_form(
             step_id="user",
-            data_schema=form_schema(None),
+            data_schema=_options_schema(None),
             errors=errors,
             last_step=True,
         )
@@ -186,50 +176,27 @@ class CnMapsConfigFlow(ConfigFlow, domain=DOMAIN):
 # ============================================================ 选项流（单页）
 
 class CnMapsOptionsFlow(OptionsFlow):
-    """改数据源、填 Key、调纠偏。一页搞定。"""
-
-    def __init__(self) -> None:
-        self._options: dict[str, Any] = {}
+    """改数据源、填天地图 Key、调纠偏。一页搞定。"""
 
     async def async_step_init(
         self, user_input: dict | None = None
     ) -> ConfigFlowResult:
-        self._options = normalize_options(self.config_entry.options)
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            source = get_source(user_input.get(CONF_MAP_SOURCE))
             key = str(user_input.get(CONF_API_KEY) or "").strip()
-
-            error = await async_validate_key(self.hass, source, key)
+            error = await _validate_tianditu_key(
+                self.hass, user_input.get(CONF_MAP_SOURCE, ""), key
+            )
             if error:
                 errors[CONF_API_KEY] = error
             else:
-                keys = dict(self._options.get(CONF_KEYS) or {})
-                if source.key_name:
-                    if key:
-                        keys[source.key_name] = key
-                    else:
-                        keys.pop(source.key_name, None)
-                self._options.update(
-                    {
-                        CONF_MAP_SOURCE: source.key,
-                        CONF_KEYS: keys,
-                        CONF_FIX_CHINA_OFFSET: bool(
-                            user_input.get(CONF_FIX_CHINA_OFFSET, True)
-                        ),
-                        CONF_PRECISE_OFFSET: bool(
-                            user_input.get(CONF_PRECISE_OFFSET, True)
-                        ),
-                    }
-                )
-                return self.async_create_entry(
-                    data=normalize_options(self._options)
-                )
+                options = _save_options(user_input, self.config_entry.options)
+                return self.async_create_entry(data=options)
 
         return self.async_show_form(
             step_id="init",
-            data_schema=form_schema(self._options, (*BASIC_FIELDS, CONF_API_KEY)),
+            data_schema=_options_schema(self.config_entry.options),
             errors=errors,
         )
 

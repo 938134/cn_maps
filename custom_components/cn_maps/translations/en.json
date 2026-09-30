@@ -4,49 +4,53 @@
     "step": {
       "user": {
         "title": "Choose a base map",
-        "description": "This integration replaces the base map of Home Assistant's built-in map with a Chinese map provider.\n\nTiles are fetched by the Home Assistant server, and the China datum shift is applied there too, so the app and web UI show identical maps and no API key is ever sent to the browser. Only Tianditu needs an API key (free of charge, choose the \"browser\" application type).",
+        "description": "This integration replaces the base map with a Chinese map provider. Tiles are fetched by the Home Assistant server with datum shift applied there, so all clients show identical maps.\n\nAMap/Tencent/Baidu need no key; Tianditu requires a free API key.",
         "data": {
           "map_source": "Map source",
-          "api_key": "API key"
+          "api_key": "Tianditu API key",
+          "fix_china_offset": "Fix China datum offset",
+          "precise_offset": "Pixel-accurate offset fix"
         },
         "data_description": {
-          "map_source": "AMap / Tencent / Baidu need no key. The vector, image and terrain Tianditu layers share one key.",
-          "api_key": "Key of the currently selected source. Stored on the Home Assistant server only."
+          "map_source": "AMap/Tencent/Baidu need no key. Tianditu vector and image share one key.",
+          "api_key": "Apply at console.tianditu.gov.cn (free, choose \"browser\" type). Stored on the HA server only. Leave empty for non-Tianditu sources.",
+          "fix_china_offset": "Chinese maps use GCJ-02/BD-09 while HA entities are WGS84. Enable to shift tiles back so roads and entities align (default on).",
+          "precise_offset": "On: up to 4 upstream tiles per tile (most accurate). Off: single tile, saves CPU."
         }
       }
     },
     "abort": {
-      "single_instance_allowed": "The base map is a global setting, so only one instance is allowed. Change it in the existing entry's options."
+      "single_instance_allowed": "The base map is a global setting, only one instance is allowed."
     },
     "error": {
-      "key_required": "The selected map source requires an API key.",
+      "key_required": "Tianditu requires an API key.",
       "invalid_key": "The API key is invalid or expired.",
-      "cannot_connect": "Could not reach the validation server. Check the network of your Home Assistant host."
+      "cannot_connect": "Could not reach the validation server."
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "China Maps settings",
-        "description": "Pick a map source, enter its key and tune the offset fix. You can also switch sources from the toolbar in the bottom-right corner of the map.",
+        "description": "Pick a source, enter Tianditu key and tune offset fix. You can also switch from the toolbar in the map.",
         "data": {
           "map_source": "Map source",
-          "api_key": "API key",
+          "api_key": "Tianditu API key",
           "fix_china_offset": "Fix China datum offset",
           "precise_offset": "Pixel-accurate offset fix"
         },
         "data_description": {
-          "map_source": "Switching the source keeps the keys you already entered.",
-          "api_key": "Key of the currently selected source; leave empty when the source needs none.",
-          "fix_china_offset": "Chinese map services use GCJ-02 / BD-09 while Home Assistant entities are WGS84. With the fix enabled the tiles are shifted back so roads and entities line up (default on).",
-          "precise_offset": "On: up to 4 upstream tiles are stitched per tile (most accurate). Off: a single tile is fetched (cheaper, accuracy drops to one tile, about ±300 m at z18)."
+          "map_source": "AMap/Tencent/Baidu need no key. Tianditu vector and image share one key.",
+          "api_key": "Leave empty for non-Tianditu sources. The key is kept when switching sources.",
+          "fix_china_offset": "Chinese maps use GCJ-02/BD-09 while HA entities are WGS84. Enable to shift tiles back (default on).",
+          "precise_offset": "On: up to 4 upstream tiles per tile (most accurate). Off: single tile, saves CPU."
         }
       }
     },
     "error": {
-      "key_required": "The selected map source requires an API key.",
+      "key_required": "Tianditu requires an API key.",
       "invalid_key": "The API key is invalid or expired.",
-      "cannot_connect": "Could not reach the validation server. Check the network of your Home Assistant host."
+      "cannot_connect": "Could not reach the validation server."
     }
   }
 }
