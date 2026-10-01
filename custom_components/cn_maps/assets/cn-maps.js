@@ -9,7 +9,12 @@
 (function () {
   "use strict";
 
-  var VERSION = "2026.09.30";
+  // 版本号只维护 manifest.json 一份：发布流程从 tag 同步 manifest，
+  // 后端（runtime.build_frontend_config）再把版本注入到 window.__cnMapsConfig。
+  // 这里直接读注入值，避免两处手工维护导致漂移。
+  var INJECTED = (typeof window !== "undefined" && window.__cnMapsConfig) || {};
+
+  var VERSION = String(INJECTED.version || "0");
 
   var CONFIG = {
     version: VERSION,
@@ -22,8 +27,6 @@
     styles: { light: null, dark: null },
     sources: [],
   };
-
-  var INJECTED = (typeof window !== "undefined" && window.__cnMapsConfig) || {};
 
   function applyInjected(source, target) {
     Object.keys(target).forEach(function (key) {

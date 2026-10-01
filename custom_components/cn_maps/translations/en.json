@@ -4,7 +4,7 @@
     "step": {
       "user": {
         "title": "Choose a base map",
-        "description": "This integration replaces the base map with a Chinese map provider. Tiles are fetched by the Home Assistant server with datum shift applied there, so all clients show identical maps.\n\nAMap/Tencent/Baidu need no key; Tianditu requires a free API key.",
+        "description": "This integration replaces the base map with a Chinese map provider. Tiles are fetched by the Home Assistant server with datum shift applied there, so all clients show identical maps.\n\nAMap/Tencent need no key; Tianditu requires a free API key from [console.tianditu.gov.cn](https://console.tianditu.gov.cn/) (choose the \"browser\" type).",
         "data": {
           "map_source": "Map source",
           "api_key": "Tianditu API key",
@@ -12,8 +12,8 @@
           "precise_offset": "Pixel-accurate offset fix"
         },
         "data_description": {
-          "map_source": "AMap/Tencent/Baidu need no key. Tianditu vector and image share one key.",
-          "api_key": "Apply at console.tianditu.gov.cn (free, choose \"browser\" type). Stored on the HA server only. Leave empty for non-Tianditu sources.",
+          "map_source": "AMap/Tencent need no key. Tianditu vector and image share one key.",
+          "api_key": "Apply for free at [console.tianditu.gov.cn](https://console.tianditu.gov.cn/). Stored on the HA server only. Leave empty for non-Tianditu sources.",
           "fix_china_offset": "Chinese maps use GCJ-02/BD-09 while HA entities are WGS84. Enable to shift tiles back so roads and entities align (default on).",
           "precise_offset": "On: up to 4 upstream tiles per tile (most accurate). Off: single tile, saves CPU."
         }
@@ -32,7 +32,7 @@
     "step": {
       "init": {
         "title": "China Maps settings",
-        "description": "Pick a source, enter Tianditu key and tune offset fix. You can also switch from the toolbar in the map.",
+        "description": "Pick a source, enter Tianditu key and tune offset fix. You can also switch from the map buttons in the top-left corner.\n\nGet a free Tianditu key at [console.tianditu.gov.cn](https://console.tianditu.gov.cn/) — vector and image share the same key.",
         "data": {
           "map_source": "Map source",
           "api_key": "Tianditu API key",
@@ -40,7 +40,7 @@
           "precise_offset": "Pixel-accurate offset fix"
         },
         "data_description": {
-          "map_source": "AMap/Tencent/Baidu need no key. Tianditu vector and image share one key.",
+          "map_source": "AMap/Tencent need no key. Tianditu vector and image share one key.",
           "api_key": "Leave empty for non-Tianditu sources. The key is kept when switching sources.",
           "fix_china_offset": "Chinese maps use GCJ-02/BD-09 while HA entities are WGS84. Enable to shift tiles back (default on).",
           "precise_offset": "On: up to 4 upstream tiles per tile (most accurate). Off: single tile, saves CPU."
