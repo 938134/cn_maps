@@ -426,16 +426,54 @@
       }, 10);
     }
 
-    // 用 MutationObserver 监听 DOM 变化，地图控件一出现就注入
-    observer = new MutationObserver(function () {
-      tryInject();
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
+    // ---- 监听 DOM 变化（含 shadow DOM）----
+    // HA 界面几乎全部渲染在 shadow DOM 里，只挂在 document.body 上的
+    // MutationObserver 看不到 shadow root 内部的变化：首次打开地图、
+    // 或从其它菜单切回来时，hui-map-card 都是在 shadow DOM 里（重）建的，
+    // #buttons 随之重建，之前的监听方式完全感知不到，按钮就丢了。
+    // 因此三管齐下：
+    //   ① 递归给所有 shadow root 挂同一个 observer（新出现的也会补挂）；
+    //   ② 监听 HA 的 location-changed 路由事件；
+    //   ③ 兜底定时扫描（tryInject 有幂等保护，已注入的容器会跳过）。
+    var observedRoots = typeof WeakSet !== "undefined" ? new WeakSet() : null;
+    var pendingInject = false;
 
-    // 立即试一次（地图可能已经渲染了）
-    setTimeout(function () { tryInject(); }, 500);
+    function attachObserver(root) {
+      if (!observedRoots || !root) return;
+      if (observedRoots.has(root)) return;
+      observedRoots.add(root);
+      observer.observe(root, { childList: true, subtree: true });
+    }
 
-    if (CONFIG.debug) console.info("[cn_maps] 开始监听地图控件，准备注入切换按钮");
+    function observeShadowRoots(root) {
+      if (!root || !root.querySelectorAll) return;
+      attachObserver(root);
+      var all = root.querySelectorAll("*");
+      for (var i = 0; i < all.length; i++) {
+        if (all[i].shadowRoot) observeShadowRoots(all[i].shadowRoot);
+      }
+    }
+
+    function scheduleInject() {
+      if (pendingInject) return;
+      pendingInject = true;
+      setTimeout(function () {
+        pendingInject = false;
+        observeShadowRoots(document); // 顺带给新出现的 shadow root 补挂 observer
+        tryInject();
+      }, 150);
+    }
+
+    observer = new MutationObserver(scheduleInject);
+    observeShadowRoots(document);
+    tryInject();
+
+    // HA 前端路由切换（菜单跳转）事件
+    window.addEventListener("location-changed", scheduleInject);
+    // 兜底：定时扫描，防止 shadow root 在不可观测的时机创建导致漏挂
+    setInterval(scheduleInject, 2000);
+
+    if (CONFIG.debug) console.info("[cn_maps] 开始监听地图控件（含 shadow DOM），准备注入切换按钮");
   }
 
   /* ------------------------------------------- 设置变更后自动刷新一次 */
