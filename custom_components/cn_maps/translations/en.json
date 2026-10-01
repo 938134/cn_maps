@@ -4,7 +4,7 @@
     "step": {
       "user": {
         "title": "Choose a base map",
-        "description": "This integration replaces the base map with a Chinese map provider. Tiles are fetched by the Home Assistant server with datum shift applied there, so all clients show identical maps.\n\nAMap/Tencent need no key; get a free Tianditu key at [console.tianditu.gov.cn](http://lbs.tianditu.gov.cn/) (choose the \"browser\" type).",
+        "description": "This integration replaces the base map with a Chinese map provider. Tiles are fetched by the Home Assistant server with datum shift applied there, so all clients show identical maps.\n\nAMap/Tencent need no key; get a free Tianditu key at [lbs.tianditu.gov.cn](http://lbs.tianditu.gov.cn/) (choose the \"browser\" type).",
         "data": {
           "map_source": "Map source",
           "api_key": "Tianditu API key",
@@ -40,7 +40,7 @@
         },
         "data_description": {
           "map_source": "AMap/Tencent need no key; Tianditu requires a key.",
-          "api_key": "Apply for free at console.tianditu.gov.cn; vector and image share the same key. The key is kept when switching sources. Leave empty for non-Tianditu sources.",
+          "api_key": "Apply for free at lbs.tianditu.gov.cn; vector and image share the same key. The key is kept when switching sources. Leave empty for non-Tianditu sources.",
           "fix_china_offset": "Chinese maps use GCJ-02/BD-09 while HA entities are WGS84. Enable to shift tiles back (default on).",
           "precise_offset": "On: up to 4 upstream tiles per tile (most accurate). Off: single tile, saves CPU."
         }
