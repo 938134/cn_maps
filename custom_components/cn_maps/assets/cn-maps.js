@@ -200,50 +200,59 @@
       return results;
     }
 
+    /** 往单个按钮容器注入切换按钮（幂等，已注入则跳过） */
+    function injectIntoContainer(container) {
+      if (container.querySelector(".cn-maps-switch-btn")) return; // 已注入
+
+      // 统一按钮配色：官方「切换分组/重置焦点」与本按钮都用实底背景，
+      // 观感与放大缩小按钮一致；颜色用 HA 主题变量，自动跟随亮暗模式
+      var rootNode = container.getRootNode();
+      if (rootNode && !rootNode.querySelector("#cn-maps-btn-style")) {
+        var styleEl = document.createElement("style");
+        styleEl.id = "cn-maps-btn-style";
+        styleEl.textContent =
+          "#buttons ha-icon-button{background-color:var(--card-background-color,#fff);" +
+          "color:var(--primary-text-color,#212121);border-radius:50%;" +
+          "box-shadow:0 0 0 2px rgba(0,0,0,.1)}" +
+          "#buttons ha-icon-button:hover{filter:brightness(.92)}";
+        (rootNode === document ? document.head : rootNode).appendChild(styleEl);
+      }
+
+      // 创建与官方按钮同款的 ha-icon-button
+      var btn = document.createElement("ha-icon-button");
+      btn.className = "cn-maps-switch-btn";
+      btn.setAttribute("label", "切换底图");
+      btn.title = "切换底图：" + (CONFIG.sourceLabel || CONFIG.source || "");
+      btn.tabIndex = 0;
+      // 用与官方一致的 Material Design 图标（layers 图标，语义即「图层/底图」）
+      btn.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" style="pointer-events:none">' +
+        '<path d="M11.99 18.54l-7.37-5.73L3 14.07l9 7 9-7-1.63-1.27-7.38 5.74zM12 16l7.36-5.73L21 9l-9-7-9 7 1.63 1.27L12 16z"/>' +
+        '</svg>';
+
+      btn.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        showSourceMenu(btn);
+      });
+
+      container.appendChild(btn);
+      if (CONFIG.debug) console.info("[cn_maps] 切换按钮已注入官方按钮列");
+    }
+
+    /** 在某个地图元素（hui-map-card / ha-map）的渲染根里找容器注入 */
+    function injectIntoHost(host) {
+      var root = host.renderRoot || host.shadowRoot;
+      if (!root || !root.querySelectorAll) return;
+      try {
+        root.querySelectorAll(BTN_CONTAINERS).forEach(injectIntoContainer);
+      } catch (e) {}
+    }
+
+    /** 全文档兜底扫描（含 shadow DOM） */
     function tryInject() {
       var containers = deepQueryAll(document, BTN_CONTAINERS);
-      if (containers.length === 0) return false;
-
-      var injected = false;
-      containers.forEach(function (container) {
-        if (container.querySelector(".cn-maps-switch-btn")) return; // 已注入
-
-        // 统一按钮配色：官方「切换分组/重置焦点」与本按钮都用实底背景，
-        // 观感与放大缩小按钮一致；颜色用 HA 主题变量，自动跟随亮暗模式
-        var rootNode = container.getRootNode();
-        if (rootNode && !rootNode.querySelector("#cn-maps-btn-style")) {
-          var styleEl = document.createElement("style");
-          styleEl.id = "cn-maps-btn-style";
-          styleEl.textContent =
-            "#buttons ha-icon-button{background-color:var(--card-background-color,#fff);" +
-            "color:var(--primary-text-color,#212121);border-radius:50%;" +
-            "box-shadow:0 0 0 2px rgba(0,0,0,.1)}" +
-            "#buttons ha-icon-button:hover{filter:brightness(.92)}";
-          (rootNode === document ? document.head : rootNode).appendChild(styleEl);
-        }
-
-        // 创建与官方按钮同款的 ha-icon-button
-        var btn = document.createElement("ha-icon-button");
-        btn.className = "cn-maps-switch-btn";
-        btn.setAttribute("label", "切换底图");
-        btn.title = "切换底图：" + (CONFIG.sourceLabel || CONFIG.source || "");
-        btn.tabIndex = 0;
-        // 用与官方一致的 Material Design 图标（layers 图标，语义即「图层/底图」）
-        btn.innerHTML = '<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" style="pointer-events:none">' +
-          '<path d="M11.99 18.54l-7.37-5.73L3 14.07l9 7 9-7-1.63-1.27-7.38 5.74zM12 16l7.36-5.73L21 9l-9-7-9 7 1.63 1.27L12 16z"/>' +
-          '</svg>';
-
-        btn.addEventListener("click", function (e) {
-          e.preventDefault();
-          e.stopPropagation();
-          showSourceMenu(btn);
-        });
-
-        container.appendChild(btn);
-        injected = true;
-        if (CONFIG.debug) console.info("[cn_maps] 切换按钮已注入官方按钮列");
-      });
-      return injected;
+      containers.forEach(injectIntoContainer);
+      return containers.length > 0;
     }
 
     /** 从后端取最新配置（style.json 需要鉴权，带上 HA 的 access token） */
@@ -426,15 +435,58 @@
       }, 10);
     }
 
-    // ---- 监听 DOM 变化（含 shadow DOM）----
-    // HA 界面几乎全部渲染在 shadow DOM 里，只挂在 document.body 上的
-    // MutationObserver 看不到 shadow root 内部的变化：首次打开地图、
-    // 或从其它菜单切回来时，hui-map-card 都是在 shadow DOM 里（重）建的，
-    // #buttons 随之重建，之前的监听方式完全感知不到，按钮就丢了。
-    // 因此三管齐下：
-    //   ① 递归给所有 shadow root 挂同一个 observer（新出现的也会补挂）；
-    //   ② 监听 HA 的 location-changed 路由事件；
-    //   ③ 兜底定时扫描（tryInject 有幂等保护，已注入的容器会跳过）。
+    // ---- 首选：挂钩地图元素的渲染生命周期 ----
+    // hui-map-card / ha-map 是 Lit 组件，每次（重）渲染都会走
+    // firstUpdated() / updated() 生命周期。把注入逻辑挂上去：卡片创建、
+    // 切菜单回来重建、样式更新重渲染的瞬间就地注入——时机精确、零轮询。
+    // 组件可能是懒加载（首次打开地图才 define），因此同时拦截
+    // customElements.define，定义时自动补挂钩。
+    var TARGET_ELEMENTS = ["hui-map-card", "ha-map"];
+    var patchedCtors = {};
+
+    function patchMapElement(name) {
+      if (patchedCtors[name]) return true;
+      var registry = window.customElements;
+      var ctor = registry && registry.get ? registry.get(name) : null;
+      if (!ctor || !ctor.prototype) return false;
+      patchedCtors[name] = true;
+      var proto = ctor.prototype;
+      ["firstUpdated", "updated"].forEach(function (method) {
+        var orig = proto[method];
+        if (typeof orig !== "function" || orig.__cnMapsWrapped) return;
+        var wrapped = function () {
+          var result = orig.apply(this, arguments);
+          try { injectIntoHost(this); } catch (e) {}
+          return result;
+        };
+        wrapped.__cnMapsWrapped = true;
+        proto[method] = wrapped;
+      });
+      if (CONFIG.debug) console.info("[cn_maps] 已挂钩 " + name + " 渲染生命周期");
+      return true;
+    }
+
+    function patchElementRegistry() {
+      if (typeof CustomElementRegistry === "undefined") return;
+      var proto = CustomElementRegistry.prototype;
+      if (proto.__cnMapsPatched) return;
+      proto.__cnMapsPatched = true;
+      var origDefine = proto.define;
+      proto.define = function (name, ctor, opts) {
+        var result = origDefine.apply(this, arguments);
+        if (TARGET_ELEMENTS.indexOf(name) !== -1) patchMapElement(name);
+        return result;
+      };
+    }
+
+    TARGET_ELEMENTS.forEach(patchMapElement); // 已定义的直接挂
+    patchElementRegistry();                   // 未定义的等 define 时挂
+    tryInject();                              // 兼容已渲染完成的现存实例
+
+    // ---- 兜底：DOM 监听（仅当生命周期挂钩失效时起作用）----
+    // 若未来 HA 改了组件名，挂钩会静默失效，用 MutationObserver（递归
+    // 覆盖 shadow DOM，HA 界面全在 shadow DOM 里渲染）+ 路由事件 +
+    // 定时扫描兜底，保证按钮最终仍会出现（注入有幂等保护，不重复）。
     var observedRoots = typeof WeakSet !== "undefined" ? new WeakSet() : null;
     var pendingInject = false;
 
@@ -466,14 +518,10 @@
 
     observer = new MutationObserver(scheduleInject);
     observeShadowRoots(document);
-    tryInject();
-
-    // HA 前端路由切换（菜单跳转）事件
     window.addEventListener("location-changed", scheduleInject);
-    // 兜底：定时扫描，防止 shadow root 在不可观测的时机创建导致漏挂
     setInterval(scheduleInject, 2000);
 
-    if (CONFIG.debug) console.info("[cn_maps] 开始监听地图控件（含 shadow DOM），准备注入切换按钮");
+    if (CONFIG.debug) console.info("[cn_maps] 生命周期挂钩 + DOM 兜底监听已就绪");
   }
 
   /* ------------------------------------------- 设置变更后自动刷新一次 */
