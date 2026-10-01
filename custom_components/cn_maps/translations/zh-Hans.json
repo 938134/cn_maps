@@ -4,7 +4,7 @@
     "step": {
       "user": {
         "title": "选择底图数据源",
-        "description": "集成会把 Home Assistant 内置地图的底图换成你选的数据源。瓦片由 HA 服务端代取、坐标纠偏也在服务端完成，手机 App 与网页看到的地图完全一致。\n\n高德/腾讯不需要 Key；天地图需要在[天地图官网](https://console.tianditu.gov.cn/)免费申请 API Key（应用类型选「浏览器端」）。",
+        "description": "集成会把 Home Assistant 内置地图的底图换成你选的数据源。瓦片由 HA 服务端代取、坐标纠偏也在服务端完成，手机 App 与网页看到的地图完全一致。\n\n高德/腾讯无需 Key；天地图 Key 在[天地图官网](http://lbs.tianditu.gov.cn/)免费申请（应用类型选「浏览器端」）。",
         "data": {
           "map_source": "数据源",
           "api_key": "天地图 API Key",
@@ -12,8 +12,8 @@
           "precise_offset": "像素级精确纠偏"
         },
         "data_description": {
-          "map_source": "高德/腾讯无需 Key；天地图矢量与影像共用同一个 Key。",
-          "api_key": "在 [console.tianditu.gov.cn](https://console.tianditu.gov.cn/) 免费申请。Key 只保存在 HA 服务端，不会下发到浏览器。选非天地图数据源时留空即可。",
+          "map_source": "高德/腾讯无需 Key；天地图需要 Key。",
+          "api_key": "矢量与影像共用同一个 Key。Key 只保存在 HA 服务端，不会下发到浏览器。选非天地图数据源时留空即可。",
           "fix_china_offset": "国内地图用 GCJ-02/BD-09 坐标，HA 实体是 WGS84。打开后瓦片反向平移，路网与实体对齐（默认开）。",
           "precise_offset": "打开时每张瓦片最多拼 4 张源图（最准）；关掉只取 1 张，省 CPU。"
         }
@@ -32,7 +32,6 @@
     "step": {
       "init": {
         "title": "中国地图设置",
-        "description": "选数据源、填天地图 Key、调纠偏，保存后生效。也可在地图左上角按钮列中直接切换底图。\n\n天地图 Key 在[天地图官网](https://console.tianditu.gov.cn/)免费申请，矢量与影像共用同一个 Key。",
         "data": {
           "map_source": "数据源",
           "api_key": "天地图 API Key",
@@ -40,8 +39,8 @@
           "precise_offset": "像素级精确纠偏"
         },
         "data_description": {
-          "map_source": "高德/腾讯无需 Key；天地图矢量与影像共用同一个 Key。",
-          "api_key": "选非天地图数据源时留空即可；Key 会保留，切回天地图时不用重填。",
+          "map_source": "高德/腾讯无需 Key；天地图需要 Key。",
+          "api_key": "在天地图官网（console.tianditu.gov.cn）免费申请，矢量与影像共用同一个 Key；Key 会保留，切回天地图时不用重填。选非天地图数据源时留空即可。",
           "fix_china_offset": "国内地图用 GCJ-02/BD-09 坐标，HA 实体是 WGS84。打开后瓦片反向平移，路网与实体对齐（默认开）。",
           "precise_offset": "打开时每张瓦片最多拼 4 张源图（最准）；关掉只取 1 张，省 CPU。"
         }
