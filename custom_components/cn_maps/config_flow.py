@@ -44,6 +44,12 @@ _SOURCE_OPTIONS = [
 # 天地图 Key 的标识（唯一需要 Key 的数据源）
 _TIANDITU_KEY = "tianditu"
 
+# Key 在表单里用密码框显示（带"眼睛"图标可临时查看）；
+# 老版本 HA 没有 PASSWORD 类型时退回明文，保证不崩。
+_KEY_TEXT_TYPE = getattr(
+    selector.TextSelectorType, "PASSWORD", selector.TextSelectorType.TEXT
+)
+
 
 def _options_schema(options: Mapping[str, Any] | None) -> vol.Schema:
     """统一的表单：数据源 + 天地图 Key + 纠偏开关。"""
@@ -59,7 +65,7 @@ def _options_schema(options: Mapping[str, Any] | None) -> vol.Schema:
             )
         ),
         vol.Optional(CONF_API_KEY, default=existing_key): selector.TextSelector(
-            selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+            selector.TextSelectorConfig(type=_KEY_TEXT_TYPE)
         ),
         vol.Optional(CONF_FIX_CHINA_OFFSET, default=bool(
             options.get(CONF_FIX_CHINA_OFFSET, True)
