@@ -1,13 +1,16 @@
 name: 构建和发布
 
-env:
-  PACKAGE_NAME: cn_maps
-  ZIP_NAME: cn-maps.zip
-
 on:
   workflow_dispatch:
   push:
     branches: [main]
+
+permissions:
+  contents: write
+
+env:
+  PACKAGE_NAME: cn_maps
+  ZIP_NAME: cn-maps.zip
 
 jobs:
   build:
@@ -17,7 +20,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 设置环境变量
         run: |
@@ -68,9 +70,9 @@ jobs:
         if: always()
         continue-on-error: true
         run: |
-            if gh release view "${{ steps.version_calc.outputs.version }}" >/dev/null 2>&1; then
-              gh release delete "${{ steps.version_calc.outputs.version }}" --cleanup-tag -y
-            fi
+          if gh release view "${{ steps.version_calc.outputs.version }}" >/dev/null 2>&1; then
+            gh release delete "${{ steps.version_calc.outputs.version }}" --cleanup-tag -y
+          fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
