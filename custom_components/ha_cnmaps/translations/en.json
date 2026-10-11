@@ -39,7 +39,7 @@
           "precise_offset": "Pixel-accurate offset fix"
         },
         "data_description": {
-          "api_key": "Leave empty for non-Tianditu sources. The key is kept when switching sources.",
+          "api_key": "Always visible. The key is preserved when switching sources — edit or clear it here.",
           "fix_china_offset": "Chinese maps use GCJ-02 while HA entities are WGS84. Enable to shift tiles back (default on).",
           "precise_offset": "On: up to 4 upstream tiles per tile (most accurate). Off: single tile, saves CPU."
         }

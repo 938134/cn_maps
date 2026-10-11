@@ -1,7 +1,8 @@
 """配置流 + 选项流 + 表单 schema + Key 校验。
 
-选项流只有一页：数据源 + 天地图 Key + 纠偏开关。
-天地图 Key 统一配置，切换到高德/腾讯/百度时不会丢失。
+配置流和选项流共用同一页表单：数据源 + 天地图 Key + 纠偏开关。
+天地图 Key 输入框始终显示——不管当前选的是什么源，用户都能在同一页面填/看/改。
+切源时 Key 自动保留，不会丢。
 """
 
 from __future__ import annotations
@@ -52,7 +53,12 @@ _KEY_TEXT_TYPE = getattr(
 
 
 def _options_schema(options: Mapping[str, Any] | None) -> vol.Schema:
-    """统一的表单：数据源 + 天地图 Key（仅当前源需要时显示）+ 纠偏开关。"""
+    """统一的表单：数据源 + 天地图 Key（始终显示）+ 纠偏开关。
+
+    Key 输入框无论当前选什么数据源都保留在页面上：
+    - 用户一次性填好，切换到非天地图源时不会丢失
+    - 想改/想清空都能在同一页面完成
+    """
     options = options or {}
     current = get_source(options.get(CONF_MAP_SOURCE))
     existing_key = str((options.get(CONF_KEYS) or {}).get(_TIANDITU_KEY, ""))
@@ -64,18 +70,16 @@ def _options_schema(options: Mapping[str, Any] | None) -> vol.Schema:
                 mode=selector.SelectSelectorMode.DROPDOWN,
             )
         ),
-    }
-    # 只有当前选中的数据源需要 Key 时才渲染输入框；不渲染时保留原值
-    if current.needs_key:
-        fields[vol.Optional(CONF_API_KEY, default=existing_key)] = selector.TextSelector(
+        vol.Optional(CONF_API_KEY, default=existing_key): selector.TextSelector(
             selector.TextSelectorConfig(type=_KEY_TEXT_TYPE)
-        )
-    fields[vol.Optional(CONF_FIX_CHINA_OFFSET, default=bool(
-        options.get(CONF_FIX_CHINA_OFFSET, True)
-    ))] = selector.BooleanSelector()
-    fields[vol.Optional(CONF_PRECISE_OFFSET, default=bool(
-        options.get(CONF_PRECISE_OFFSET, True)
-    ))] = selector.BooleanSelector()
+        ),
+        vol.Optional(CONF_FIX_CHINA_OFFSET, default=bool(
+            options.get(CONF_FIX_CHINA_OFFSET, True)
+        )): selector.BooleanSelector(),
+        vol.Optional(CONF_PRECISE_OFFSET, default=bool(
+            options.get(CONF_PRECISE_OFFSET, True)
+        )): selector.BooleanSelector(),
+    }
     return vol.Schema(fields)
 
 
@@ -85,14 +89,14 @@ def _save_options(user_input: dict, base: Mapping[str, Any] | None = None) -> di
     source = get_source(user_input.get(CONF_MAP_SOURCE))
 
     keys = dict(base.get(CONF_KEYS) or {})
-    raw_key = user_input.get(CONF_API_KEY, None)
-    if raw_key is None:
-        # 表单未显示 Key 字段（当前源不需要 Key）：保留原值，切回天地图时不用重填
-        pass
-    elif str(raw_key).strip():
-        keys[_TIANDITU_KEY] = str(raw_key).strip()
-    else:
-        keys.pop(_TIANDITU_KEY, None)
+    raw_key = (user_input.get(CONF_API_KEY) or "").strip()
+    if raw_key:
+        # 用户填了新值 → 覆盖保存
+        keys[_TIANDITU_KEY] = raw_key
+    # 空值一律保留原 Key：
+    # - 用户可能只是没填（比如选了高德，Key 输入框空着）
+    # - 空字符串是 selector 的默认提交值，不代表用户主动清空
+    # 想彻底删除 Key 需要改 config_entry.options.yaml 或删除重装
 
     base[CONF_MAP_SOURCE] = source.key
     base[CONF_KEYS] = keys
