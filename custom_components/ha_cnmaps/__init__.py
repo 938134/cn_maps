@@ -1,4 +1,4 @@
-"""cn_maps —— 把 Home Assistant 内置地图的底图换成国内地图源。
+"""ha_cnmaps —— 把 Home Assistant 内置地图的底图换成国内地图源。
 
 集成不提供任何实体，只做三件事：
 
@@ -7,12 +7,11 @@
    换成项目生成的样式（样式里的瓦片指向本集成），客户端不再做坐标换算；
 3. 选项一变就重建配置并重新注入，前端侦测到版本变化会自己刷新一次。
 
-还注册了 ``cn_maps.set_source`` 服务，供前端工具栏快速切换地图源。
+还注册了 ``ha_cnmaps.set_source`` 服务，供前端工具栏快速切换地图源。
 """
 
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 
@@ -31,6 +30,7 @@ from .const import (
     DATA_VIEWS_REGISTERED,
     DOMAIN,
     NAME,
+    VERSION,
 )
 from .runtime import (
     CnMapsRuntime,
@@ -53,7 +53,7 @@ _LOGGER = logging.getLogger(__name__)
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
-# cn_maps.set_source 服务 schema
+# ha_cnmaps.set_source 服务 schema
 SET_SOURCE_SCHEMA = vol.Schema(
     {
         vol.Required("source"): vol.In([s.key for s in SOURCES.values()]),
@@ -61,17 +61,8 @@ SET_SOURCE_SCHEMA = vol.Schema(
 )
 
 
-def _integration_version() -> str:
-    try:
-        manifest = json.loads(
-            (Path(__file__).parent / "manifest.json").read_text(encoding="utf-8")
-        )
-        return str(manifest.get("version", "0"))
-    except (OSError, ValueError):  # pragma: no cover
-        return "0"
-
-
-INTEGRATION_VERSION = _integration_version()
+# 版本号唯一权威源是 manifest.json，由 const.py 读取
+INTEGRATION_VERSION = VERSION
 
 
 def _read_asset() -> str:
@@ -98,7 +89,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     entry.add_update_listener(_async_options_updated)
 
-    # 注册 cn_maps.set_source 服务：前端工具栏用
+    # 注册 ha_cnmaps.set_source 服务：前端工具栏用
     if not hass.services.has_service(DOMAIN, "set_source"):
         hass.services.async_register(
             DOMAIN, "set_source", _async_set_source, schema=SET_SOURCE_SCHEMA

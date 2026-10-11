@@ -159,6 +159,8 @@ class TileService:
         self, settings: TileSettings, z: int, x: int, y: int
     ) -> tuple[bytes, str] | None:
         """取一张合成好的瓦片；拿不到返回 None。"""
+        if not settings.source.layers:  # HA 自带地图：不代理任何瓦片
+            return None
         if not (0 <= z <= 22) or x < 0 or y < 0 or x >= 2**z or y >= 2**z:
             return None
 
@@ -179,7 +181,7 @@ class TileService:
         except asyncio.CancelledError:
             raise
         except Exception as err:  # noqa: BLE001 - 单张瓦片出错不该影响地图其它部分
-            _LOGGER.debug("cn_maps: 瓦片 %s/%s/%s 渲染失败: %s", z, x, y, err)
+            _LOGGER.debug("ha_cnmaps: 瓦片 %s/%s/%s 渲染失败: %s", z, x, y, err)
             return None
 
         if result is not None:
@@ -216,7 +218,7 @@ class TileService:
         if not PILLOW_AVAILABLE:
             self._warn_once(
                 "no_pillow",
-                "cn_maps: 没找到 Pillow，无法做像素级纠偏，已退化为「整张瓦片」模式",
+                "ha_cnmaps: 没找到 Pillow，无法做像素级纠偏，已退化为「整张瓦片」模式",
             )
             return await self._fetch_fallback(source, settings, z, x, y)
 
@@ -283,7 +285,7 @@ class TileService:
                 ) as resp:
                     if resp.status != 200:
                         if settings.debug:
-                            _LOGGER.warning("cn_maps: 上游返回 %s：%s", resp.status, url)
+                            _LOGGER.warning("ha_cnmaps: 上游返回 %s：%s", resp.status, url)
                         return None
                     content_type = (
                         resp.headers.get("Content-Type", "")
@@ -294,7 +296,7 @@ class TileService:
                     data = await resp.read()
         except (ClientError, asyncio.TimeoutError) as err:
             if settings.debug:
-                _LOGGER.warning("cn_maps: 上游请求失败 %s：%s", url, err)
+                _LOGGER.warning("ha_cnmaps: 上游请求失败 %s：%s", url, err)
             return None
 
         if not data or len(data) > _MAX_UPSTREAM_BYTES:
@@ -302,7 +304,7 @@ class TileService:
         if not content_type.startswith("image/"):
             if settings.debug:
                 _LOGGER.warning(
-                    "cn_maps: 上游返回的不是图片（%s）：%s", content_type, url
+                    "ha_cnmaps: 上游返回的不是图片（%s）：%s", content_type, url
                 )
             return None
         return (data, content_type)

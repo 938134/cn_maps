@@ -1,4 +1,4 @@
-"""cn_maps 的常量定义。
+"""ha_cnmaps 的常量定义。
 
 集成只做一件事：把 Home Assistant 内置地图（MapLibre / Leaflet）的底图换成
 国内地图源。瓦片抓取、坐标换算、密钥使用全部在 HA 服务端完成，浏览器端只
@@ -7,8 +7,30 @@
 
 from __future__ import annotations
 
-DOMAIN = "cn_maps"
-NAME = "中国地图"
+import json
+import logging
+from pathlib import Path
+from typing import Final
+
+_LOGGER = logging.getLogger(__name__)
+
+DOMAIN = "ha_cnmaps"
+
+# ============================================================
+# manifest.json 读取（NAME 与 VERSION 的唯一权威数据源）
+# 发布流程从 manifest.json 取版本打 tag，不再在 CI 里按日期计数。
+# CI 会校验本文件确实从 manifest.json 读取（见 .github/workflows/release.yml）。
+# ============================================================
+_MANIFEST_PATH = Path(__file__).parent / "manifest.json"
+try:
+    with open(_MANIFEST_PATH, encoding="utf-8") as f:
+        _MANIFEST = json.load(f)
+    NAME: Final = _MANIFEST.get("name", "国内地图")
+    VERSION: Final = _MANIFEST.get("version", "0.0.0")
+except (OSError, json.JSONDecodeError) as e:  # pragma: no cover
+    _LOGGER.error("读取 manifest.json 失败: %s，使用默认值", e)
+    NAME = "国内地图"
+    VERSION = "0.0.0"
 
 # ---------------------------------------------------------------- 选项键名
 CONF_MAP_SOURCE = "map_source"
@@ -40,9 +62,9 @@ ADVANCED_FIELDS = (
 
 # ---------------------------------------------------------------- 前端资源
 ASSET_DIR = "assets"
-ASSET_FILE = "cn-maps.js"
+ASSET_FILE = "ha-cnmaps.js"
 
-VIEW_NAME = "cn_maps:frontend"
+VIEW_NAME = "ha_cnmaps:frontend"
 MODULE_PATH = f"/{DOMAIN}/frontend"
 # 前端模块带指纹：内容一变 URL 就变，浏览器缓存自动失效
 MODULE_URL_TEMPLATE = f"{MODULE_PATH}/{{fingerprint}}/{ASSET_FILE}"

@@ -98,9 +98,14 @@ def module_url(fingerprint: str) -> str:
 
 def build_style(
     options: Mapping[str, Any], *, tile_path: str, dark: bool = False
-) -> dict[str, Any]:
-    """一张 MapLibre 样式：单个栅格瓦片源，指向本集成的瓦片接口。"""
+) -> dict[str, Any] | None:
+    """一张 MapLibre 样式：单个栅格瓦片源，指向本集成的瓦片接口。
+
+    HA 自带地图不生成样式（返回 None），前端据此把样式请求透传给 HA。
+    """
     source = get_source(options.get(CONF_MAP_SOURCE))
+    if source.builtin:
+        return None
     layer: dict[str, Any] = {
         "id": STYLE_SOURCE_ID,
         "type": "raster",
@@ -170,6 +175,8 @@ def build_frontend_config(
         "source": source.key,
         "sourceLabel": source.label,
         "tileTemplate": tile_path,
+        # HA 自带地图：前端不改写样式、不代理瓦片
+        "builtin": bool(source.builtin),
         "debug": bool(options.get(CONF_DEBUG)),
         "autoReload": bool(options.get(CONF_AUTO_RELOAD)),
         "styles": build_styles(options, tile_path=tile_path),
@@ -236,7 +243,8 @@ def build_runtime(
     fingerprint = compute_fingerprint(
         asset, normalized, integration_version, token
     )
-    tile_path = tile_template(fingerprint, token)
+    # HA 自带地图没有本集成的瓦片接口，tile_path 留空让前端直接透传
+    tile_path = "" if source.builtin else tile_template(fingerprint, token)
     config = build_frontend_config(
         normalized,
         fingerprint=fingerprint,

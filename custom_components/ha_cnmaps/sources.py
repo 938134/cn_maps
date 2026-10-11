@@ -1,15 +1,13 @@
 """底图数据源注册表。
 
-支持高德路网/卫星、腾讯卫星、天地图矢量/影像，共 5 种。
-高德/腾讯不需要 Key；天地图需要免费申请的 tk。
+支持 HA 自带地图，以及高德路网/卫星、腾讯卫星、天地图矢量/影像，共 6 种。
+高德/腾讯不需要 Key；天地图需要免费申请的 tk；HA 自带地图不经过本集成的
+瓦片代理（样式透传）。
 """
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
-
-from .projection import BD_LEVEL_OFFSET
 
 _REFERER_AMAP = "https://www.amap.com/"
 _REFERER_TENCENT = "https://map.qq.com/"
@@ -34,6 +32,8 @@ class MapSource:
     layers: tuple[str, ...]
     referer: str = ""
     key_name: str | None = None
+    # True = HA 自带地图：不代理任何瓦片，样式直接透传给 HA 自己的底图
+    builtin: bool = False
 
     @property
     def needs_key(self) -> bool:
@@ -45,6 +45,17 @@ class MapSource:
 
 
 SOURCES: dict[str, MapSource] = {
+    "ha-builtin": MapSource(
+        key="ha-builtin",
+        label="HA 自带地图",
+        datum="wgs84",
+        grid="xyz",
+        max_level=22,
+        subdomains=(),
+        attribution="",
+        layers=(),
+        builtin=True,
+    ),
     "amap-road": MapSource(
         key="amap-road",
         label="高德 · 路网图",

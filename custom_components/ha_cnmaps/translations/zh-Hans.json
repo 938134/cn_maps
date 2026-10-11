@@ -1,10 +1,10 @@
 {
-  "title": "中国地图",
+  "title": "国内地图",
   "config": {
     "step": {
       "user": {
         "title": "选择底图数据源",
-        "description": "集成会把 Home Assistant 内置地图的底图换成你选的数据源。瓦片由 HA 服务端代取、坐标纠偏也在服务端完成，手机 App 与网页看到的地图完全一致。\n\n天地图 Key 在[天地图开放平台](http://lbs.tianditu.gov.cn/)免费申请（应用类型选「浏览器端」）；高德/腾讯无需 Key。",
+        "description": "集成会把 Home Assistant 内置地图的底图换成你选的数据源。瓦片由 HA 服务端代取、坐标纠偏也在服务端完成，手机 App 与网页看到的地图完全一致。\n\n选「HA 自带地图」可切回 Home Assistant 原有的默认底图（2026.10 起已更新内置地图）。\n\n天地图 Key 在[天地图开放平台](http://lbs.tianditu.gov.cn/)免费申请（应用类型选「浏览器端」）；高德/腾讯无需 Key。",
         "data": {
           "map_source": "数据源",
           "api_key": "天地图 API Key",
@@ -13,7 +13,7 @@
         },
         "data_description": {
           "api_key": "矢量与影像共用同一个 Key。Key 只保存在 HA 服务端，不会下发到浏览器。选非天地图数据源时留空即可。",
-          "fix_china_offset": "国内地图用 GCJ-02/BD-09 坐标，HA 实体是 WGS84。打开后瓦片反向平移，路网与实体对齐（默认开）。",
+          "fix_china_offset": "国内地图用 GCJ-02 坐标，HA 实体是 WGS84。打开后瓦片反向平移，路网与实体对齐（默认开）。",
           "precise_offset": "打开时每张瓦片最多拼 4 张源图（最准）；关掉只取 1 张，省 CPU。"
         }
       }
@@ -30,7 +30,7 @@
   "options": {
     "step": {
       "init": {
-        "title": "中国地图设置",
+        "title": "国内地图设置",
         "description": "天地图 Key 在[天地图开放平台](http://lbs.tianditu.gov.cn/)免费申请，矢量与影像共用同一个 Key。",
         "data": {
           "map_source": "数据源",
@@ -40,7 +40,7 @@
         },
         "data_description": {
           "api_key": "选非天地图数据源时留空即可；Key 会保留，切回天地图时不用重填。",
-          "fix_china_offset": "国内地图用 GCJ-02/BD-09 坐标，HA 实体是 WGS84。打开后瓦片反向平移，路网与实体对齐（默认开）。",
+          "fix_china_offset": "国内地图用 GCJ-02 坐标，HA 实体是 WGS84。打开后瓦片反向平移，路网与实体对齐（默认开）。",
           "precise_offset": "打开时每张瓦片最多拼 4 张源图（最准）；关掉只取 1 张，省 CPU。"
         }
       }

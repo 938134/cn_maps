@@ -52,39 +52,45 @@ _KEY_TEXT_TYPE = getattr(
 
 
 def _options_schema(options: Mapping[str, Any] | None) -> vol.Schema:
-    """统一的表单：数据源 + 天地图 Key + 纠偏开关。"""
+    """统一的表单：数据源 + 天地图 Key（仅当前源需要时显示）+ 纠偏开关。"""
     options = options or {}
     current = get_source(options.get(CONF_MAP_SOURCE))
     existing_key = str((options.get(CONF_KEYS) or {}).get(_TIANDITU_KEY, ""))
 
-    return vol.Schema({
+    fields: dict = {
         vol.Required(CONF_MAP_SOURCE, default=current.key): selector.SelectSelector(
             selector.SelectSelectorConfig(
                 options=_SOURCE_OPTIONS,
                 mode=selector.SelectSelectorMode.DROPDOWN,
             )
         ),
-        vol.Optional(CONF_API_KEY, default=existing_key): selector.TextSelector(
+    }
+    # 只有当前选中的数据源需要 Key 时才渲染输入框；不渲染时保留原值
+    if current.needs_key:
+        fields[vol.Optional(CONF_API_KEY, default=existing_key)] = selector.TextSelector(
             selector.TextSelectorConfig(type=_KEY_TEXT_TYPE)
-        ),
-        vol.Optional(CONF_FIX_CHINA_OFFSET, default=bool(
-            options.get(CONF_FIX_CHINA_OFFSET, True)
-        )): selector.BooleanSelector(),
-        vol.Optional(CONF_PRECISE_OFFSET, default=bool(
-            options.get(CONF_PRECISE_OFFSET, True)
-        )): selector.BooleanSelector(),
-    })
+        )
+    fields[vol.Optional(CONF_FIX_CHINA_OFFSET, default=bool(
+        options.get(CONF_FIX_CHINA_OFFSET, True)
+    ))] = selector.BooleanSelector()
+    fields[vol.Optional(CONF_PRECISE_OFFSET, default=bool(
+        options.get(CONF_PRECISE_OFFSET, True)
+    ))] = selector.BooleanSelector()
+    return vol.Schema(fields)
 
 
 def _save_options(user_input: dict, base: Mapping[str, Any] | None = None) -> dict:
     """把表单输入转成规范选项。"""
     base = dict(base or {})
     source = get_source(user_input.get(CONF_MAP_SOURCE))
-    key = str(user_input.get(CONF_API_KEY) or "").strip()
 
     keys = dict(base.get(CONF_KEYS) or {})
-    if key:
-        keys[_TIANDITU_KEY] = key
+    raw_key = user_input.get(CONF_API_KEY, None)
+    if raw_key is None:
+        # 表单未显示 Key 字段（当前源不需要 Key）：保留原值，切回天地图时不用重填
+        pass
+    elif str(raw_key).strip():
+        keys[_TIANDITU_KEY] = str(raw_key).strip()
     else:
         keys.pop(_TIANDITU_KEY, None)
 
@@ -124,7 +130,7 @@ async def _validate_tianditu_key(
             content_type = resp.headers.get("Content-Type", "")
             body = await resp.read()
     except (ClientError, asyncio.TimeoutError) as err:
-        _LOGGER.warning("cn_maps: 校验天地图 Key 时连不上服务器（%s），先放行", err)
+        _LOGGER.warning("ha_cnmaps: 校验天地图 Key 时连不上服务器（%s），先放行", err)
         return None
 
     if content_type.startswith("image/"):
@@ -132,7 +138,7 @@ async def _validate_tianditu_key(
 
     text = body[:512].decode("utf-8", errors="ignore")
     if any(marker in text for marker in _INVALID_MARKERS):
-        _LOGGER.warning("cn_maps: 天地图 Key 校验失败：%s", text.strip()[:200])
+        _LOGGER.warning("ha_cnmaps: 天地图 Key 校验失败：%s", text.strip()[:200])
         return "invalid_key"
     if not text.strip():
         return "cannot_connect"

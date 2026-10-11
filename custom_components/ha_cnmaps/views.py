@@ -1,8 +1,8 @@
 """HTTP 视图。
 
-* ``/cn_maps/frontend/<指纹>/cn-maps.js``  注入前端的模块（配置 + 脚本）
-* ``/cn_maps/tiles/<指纹>/<z>/<x>/<y>.png`` 服务端瓦片接口（MapLibre/Leaflet 直接取）
-* ``/cn_maps/style.json``                  样式调试接口（需登录，给人看）
+* ``/ha_cnmaps/frontend/<指纹>/ha-cnmaps.js``  注入前端的模块（配置 + 脚本）
+* ``/ha_cnmaps/tiles/<指纹>/<z>/<x>/<y>.png`` 服务端瓦片接口（MapLibre/Leaflet 直接取）
+* ``/ha_cnmaps/style.json``                  样式调试接口（需登录，给人看）
 
 瓦片接口沿用 HA 官方 ``map_tiles`` 组件的思路：**不要求鉴权、用 URL 令牌兜底**。
 原因是瓦片请求由 MapLibre 的 worker / Leaflet 的 ``<img>`` 发出，拿不到
@@ -94,7 +94,7 @@ class CnMapsTileView(HomeAssistantView):
     """服务端瓦片接口。"""
 
     url = f"{TILES_PATH}/{{fingerprint}}/{{z}}/{{x}}/{{y}}.png"
-    name = "cn_maps:tiles"
+    name = "ha_cnmaps:tiles"
     requires_auth = False
 
     def __init__(self, hass: HomeAssistant) -> None:
@@ -155,7 +155,7 @@ class CnMapsStyleView(HomeAssistantView):
     """样式调试接口：浏览器里查看当前生成的 MapLibre 样式。"""
 
     url = STYLE_PATH
-    name = "cn_maps:style"
+    name = "ha_cnmaps:style"
     requires_auth = True
 
     def __init__(self, hass: HomeAssistant) -> None:
@@ -164,7 +164,7 @@ class CnMapsStyleView(HomeAssistantView):
     async def get(self, request: web.Request) -> web.Response:
         runtime = _runtime(self._hass)
         if runtime is None:
-            return self.json_message("cn_maps 还没配置好", status_code=404)
+            return self.json_message("ha_cnmaps 还没配置好", status_code=404)
         return self.json(
             {
                 "fingerprint": runtime.fingerprint,

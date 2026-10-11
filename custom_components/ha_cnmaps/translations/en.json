@@ -1,10 +1,10 @@
 {
-  "title": "China Maps",
+  "title": "ha_cnmaps",
   "config": {
     "step": {
       "user": {
         "title": "Choose a base map",
-        "description": "This integration replaces the base map with a Chinese map provider. Tiles are fetched by the Home Assistant server with datum shift applied there, so all clients show identical maps.\n\nGet a free Tianditu key at [lbs.tianditu.gov.cn](http://lbs.tianditu.gov.cn/) (choose the \"browser\" type); AMap/Tencent need no key.",
+        "description": "This integration replaces the base map with a Chinese map provider. Tiles are fetched by the Home Assistant server with datum shift applied there, so all clients show identical maps.\n\nPick 'HA built-in map' to fall back to Home Assistant's own default base map (updated in HA 2026.10).\n\nGet a free Tianditu key at [lbs.tianditu.gov.cn](http://lbs.tianditu.gov.cn/) (choose the \"browser\" type); AMap/Tencent need no key.",
         "data": {
           "map_source": "Map source",
           "api_key": "Tianditu API key",
@@ -13,7 +13,7 @@
         },
         "data_description": {
           "api_key": "Vector and image share the same key. Stored on the HA server only. Leave empty for non-Tianditu sources.",
-          "fix_china_offset": "Chinese maps use GCJ-02/BD-09 while HA entities are WGS84. Enable to shift tiles back so roads and entities align (default on).",
+          "fix_china_offset": "Chinese maps use GCJ-02 while HA entities are WGS84. Enable to shift tiles back so roads and entities align (default on).",
           "precise_offset": "On: up to 4 upstream tiles per tile (most accurate). Off: single tile, saves CPU."
         }
       }
@@ -30,7 +30,7 @@
   "options": {
     "step": {
       "init": {
-        "title": "China Maps settings",
+        "title": "ha_cnmaps settings",
         "description": "Get a free Tianditu key at [lbs.tianditu.gov.cn](http://lbs.tianditu.gov.cn/) — vector and image share the same key.",
         "data": {
           "map_source": "Map source",
@@ -40,7 +40,7 @@
         },
         "data_description": {
           "api_key": "Leave empty for non-Tianditu sources. The key is kept when switching sources.",
-          "fix_china_offset": "Chinese maps use GCJ-02/BD-09 while HA entities are WGS84. Enable to shift tiles back (default on).",
+          "fix_china_offset": "Chinese maps use GCJ-02 while HA entities are WGS84. Enable to shift tiles back (default on).",
           "precise_offset": "On: up to 4 upstream tiles per tile (most accurate). Off: single tile, saves CPU."
         }
       }

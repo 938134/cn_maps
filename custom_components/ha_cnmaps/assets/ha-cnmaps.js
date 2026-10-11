@@ -1,5 +1,5 @@
 /**
- * cn_maps —— 把 Home Assistant 内置地图的底图换成国内地图源。
+ * ha_cnmaps —— 把 Home Assistant 内置地图的底图换成国内地图源。
  *
  * 这是集成注入的「胶水」脚本，它做三件事：
  *   1. 把 HA 内置的 /static/map/light.json、/static/map/dark.json 换成集成生成的样式；
@@ -22,6 +22,7 @@
     source: "",
     sourceLabel: "",
     tileTemplate: "",
+    builtin: false,
     debug: false,
     autoReload: true,
     styles: { light: null, dark: null },
@@ -42,8 +43,8 @@
   var stats = { styleHits: 0, rasterTiles: 0, cartoTiles: 0, errors: [] };
   window.__cnMapsStats = stats;
 
-  if (!CONFIG.styles || !CONFIG.styles.light) {
-    console.warn("[cn_maps] 没有拿到集成注入的配置，脚本不生效。");
+  if (!CONFIG.builtin && (!CONFIG.styles || !CONFIG.styles.light)) {
+    console.warn("[ha_cnmaps] 没有拿到集成注入的配置，脚本不生效。");
     window.cnMaps = { version: VERSION, active: false, stats: stats };
     return;
   }
@@ -83,6 +84,8 @@
   }
 
   function styleFor(url) {
+    // HA 自带地图：不改写样式，让请求透传给 HA 自己的底图
+    if (CONFIG.builtin) return null;
     if (!url || url.indexOf("static/map/") === -1) return null;
     var match = STYLE_RE.exec(url);
     if (!match) return null;
@@ -239,7 +242,7 @@
       });
 
       container.appendChild(btn);
-      if (CONFIG.debug) console.info("[cn_maps] 切换按钮已注入官方按钮列");
+      if (CONFIG.debug) console.info("[ha_cnmaps] 切换按钮已注入官方按钮列");
     }
 
     /** 在某个地图元素（hui-map-card / ha-map）的渲染根里找容器注入 */
@@ -266,18 +269,22 @@
           headers.Authorization = "Bearer " + hass.auth.data.access_token;
         }
       } catch (e) {}
-      return fetch("/cn_maps/style.json", { headers: headers }).then(function (r) {
+      return fetch("/ha_cnmaps/style.json", { headers: headers }).then(function (r) {
         return r.ok ? r.json() : null;
       });
     }
 
     /** 免刷新热切换：更新配置 + 让地图重载样式 */
     function applyNewConfig(cfg) {
+      var builtin = !!cfg.builtin;
       var tileTemplate = "";
-      try {
-        tileTemplate = cfg.styles.light.sources["cn-base"].tiles[0];
-      } catch (e) {}
-      if (!tileTemplate) return false;
+      // HA 自带地图没有本集成的瓦片模板，样式改为透传
+      if (!builtin) {
+        try {
+          tileTemplate = cfg.styles.light.sources["cn-base"].tiles[0];
+        } catch (e) {}
+        if (!tileTemplate) return false;
+      }
 
       var label = cfg.source || "";
       (CONFIG.sources || []).forEach(function (s) {
@@ -289,6 +296,7 @@
         source: cfg.source,
         sourceLabel: label,
         tileTemplate: tileTemplate,
+        builtin: builtin,
         styles: cfg.styles,
       });
 
@@ -310,7 +318,7 @@
             ok = true;
           }
         } catch (e) {
-          if (CONFIG.debug) console.warn("[cn_maps] 热切换地图样式失败：", e);
+          if (CONFIG.debug) console.warn("[ha_cnmaps] 热切换地图样式失败：", e);
         }
       });
       return ok;
@@ -324,9 +332,9 @@
         return;
       }
       try {
-        hass.callService("cn_maps", "set_source", { source: srcKey });
+        hass.callService("ha_cnmaps", "set_source", { source: srcKey });
       } catch (e) {
-        if (CONFIG.debug) console.warn("[cn_maps] callService 异常：", e);
+        if (CONFIG.debug) console.warn("[ha_cnmaps] callService 异常：", e);
       }
 
       var attempts = 0;
@@ -336,7 +344,7 @@
           .then(function (cfg) {
             if (cfg && cfg.fingerprint && cfg.fingerprint !== CONFIG.fingerprint) {
               if (applyNewConfig(cfg)) {
-                if (CONFIG.debug) console.info("[cn_maps] 已热切换到 " + cfg.source);
+                if (CONFIG.debug) console.info("[ha_cnmaps] 已热切换到 " + cfg.source);
                 if (onDone) onDone();
                 return;
               }
@@ -377,14 +385,22 @@
         "padding: 4px",
         "font-family: var(--primary-font-family, sans-serif)",
         "font-size: 13px",
-        "max-height: 320px",
+        // 宽度不超过视口，避免窄屏（如手机横屏）下被右边缘裁掉
+        "max-width: calc(100vw - 16px)",
         "overflow-y: auto",
+        "-webkit-overflow-scrolling: touch",
       ].join(";");
 
-      // 定位到按钮正下方
-      var rect = btnEl.getBoundingClientRect();
-      menu.style.left = rect.left + "px";
-      menu.style.top = (rect.bottom + 4) + "px";
+      // ---- 关闭菜单时同步摘掉事件监听，避免重复开关导致监听泄漏 ----
+      function onDocClick(e) {
+        if (!menu.contains(e.target)) closeMenu();
+      }
+      function closeMenu() {
+        menu.remove();
+        document.removeEventListener("click", onDocClick);
+        window.removeEventListener("resize", positionMenu);
+        window.removeEventListener("location-changed", positionMenu);
+      }
 
       CONFIG.sources.forEach(function (src) {
         var item = document.createElement("div");
@@ -412,13 +428,11 @@
         });
         item.addEventListener("click", function () {
           if (src.key === CONFIG.source) {
-            menu.remove();
+            closeMenu();
             return;
           }
           item.textContent = "切换中…";
-          switchSource(src.key, function () {
-            menu.remove();
-          });
+          switchSource(src.key, closeMenu);
         });
 
         menu.appendChild(item);
@@ -426,15 +440,55 @@
 
       document.body.appendChild(menu);
 
-      // 点击外部关闭菜单
-      setTimeout(function () {
-        function close(e) {
-          if (!menu.contains(e.target)) {
-            menu.remove();
-            document.removeEventListener("click", close);
-          }
+      // ---- 按视口自适应定位 ----
+      // 数据源条数固定，但屏幕尺寸千差万别：地图上那个切换按钮常贴着视口底部
+      // 或右边缘，固定坐标 + 固定 max-height 就会被裁掉（“菜单显示不完整”）。
+      // 这里先渲染出真实尺寸，再比较「按钮下方 / 上方」的剩余空间决定朝哪边
+      // 展开，最后夹回视口内；窗口尺寸或路由变化时重新计算。
+      var GAP = 6;     // 菜单与按钮的间距
+      var MARGIN = 8;  // 与视口边缘的最小留白
+
+      function positionMenu() {
+        var rect = btnEl.getBoundingClientRect();
+        var vw = window.innerWidth || document.documentElement.clientWidth;
+        var vh = window.innerHeight || document.documentElement.clientHeight;
+
+        var spaceBelow = vh - rect.bottom - MARGIN;
+        var spaceAbove = rect.top - MARGIN;
+        var avail = Math.max(60, Math.max(spaceBelow, spaceAbove));
+        // 上限 420px：桌面大屏上不拉成长条
+        menu.style.maxHeight = Math.min(420, avail - GAP) + "px";
+
+        var w = menu.offsetWidth;
+        var h = menu.offsetHeight;
+
+        // 水平：优先与按钮左对齐；超出右边界就改右对齐；最后夹进视口
+        var left = rect.left;
+        if (left + w > vw - MARGIN) left = rect.right - w;
+        left = Math.max(MARGIN, Math.min(left, Math.max(MARGIN, vw - w - MARGIN)));
+
+        // 竖直：哪边空间大就朝哪边展开；翻到上方仍放不下时退回下方
+        var top;
+        if (spaceBelow >= spaceAbove) {
+          top = rect.bottom + GAP;
+          if (top + h > vh - MARGIN) top = Math.max(MARGIN, vh - MARGIN - h);
+        } else {
+          top = rect.top - h - GAP;
+          if (top < MARGIN) top = rect.bottom + GAP;
         }
-        document.addEventListener("click", close);
+        top = Math.max(MARGIN, top);
+
+        menu.style.left = left + "px";
+        menu.style.top = top + "px";
+      }
+
+      positionMenu();
+      window.addEventListener("resize", positionMenu);
+      window.addEventListener("location-changed", positionMenu);
+
+      // 延迟注册「点击外部关闭」，保证本次按钮点击不会立刻把菜单关掉
+      setTimeout(function () {
+        document.addEventListener("click", onDocClick);
       }, 10);
     }
 
@@ -465,7 +519,7 @@
         wrapped.__cnMapsWrapped = true;
         proto[method] = wrapped;
       });
-      if (CONFIG.debug) console.info("[cn_maps] 已挂钩 " + name + " 渲染生命周期");
+      if (CONFIG.debug) console.info("[ha_cnmaps] 已挂钩 " + name + " 渲染生命周期");
       return true;
     }
 
@@ -524,7 +578,7 @@
     window.addEventListener("location-changed", scheduleInject);
     setInterval(scheduleInject, 2000);
 
-    if (CONFIG.debug) console.info("[cn_maps] 生命周期挂钩 + DOM 兜底监听已就绪");
+    if (CONFIG.debug) console.info("[ha_cnmaps] 生命周期挂钩 + DOM 兜底监听已就绪");
   }
 
   /* ------------------------------------------- 设置变更后自动刷新一次 */
@@ -558,7 +612,7 @@
   };
 
   console.info(
-    "[cn_maps] v" + VERSION +
+    "[ha_cnmaps] v" + VERSION +
     " 已加载：底图=" + (CONFIG.sourceLabel || CONFIG.source || "?")
   );
 
