@@ -4,10 +4,10 @@
   "codeowners": ["@938134"],
   "config_flow": true,
   "dependencies": ["http", "frontend"],
-  "documentation": "https://github.com/938134/cn-maps",
+  "documentation": "https://github.com/938134/ha_cnmaps",
   "integration_type": "service",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/938134/cn-maps/issues",
+  "issue_tracker": "https://github.com/938134/ha_cnmaps/issues",
   "requirements": [],
-  "version": "2026.10.11"
+  "version": "1.0.0"
 }
