@@ -15,16 +15,16 @@
           "api_key": "Vector and image share the same key. Stored on the HA server only. Leave empty for non-Tianditu sources.",
           "fix_china_offset": "Chinese maps use GCJ-02 while HA entities are WGS84. Enable to shift tiles back so roads and entities align (default on).",
           "precise_offset": "On: up to 4 upstream tiles per tile (most accurate). Off: single tile, saves CPU."
+        },
+        "errors": {
+          "key_required": "Tianditu requires an API key.",
+          "invalid_key": "The API key is invalid or expired.",
+          "cannot_connect": "Could not reach the validation server."
         }
       }
     },
     "abort": {
       "single_instance_allowed": "The base map is a global setting, only one instance is allowed."
-    },
-    "error": {
-      "key_required": "Tianditu requires an API key.",
-      "invalid_key": "The API key is invalid or expired.",
-      "cannot_connect": "Could not reach the validation server."
     }
   },
   "options": {
@@ -42,13 +42,13 @@
           "api_key": "Always visible. The key is preserved when switching sources — edit or clear it here.",
           "fix_china_offset": "Chinese maps use GCJ-02 while HA entities are WGS84. Enable to shift tiles back (default on).",
           "precise_offset": "On: up to 4 upstream tiles per tile (most accurate). Off: single tile, saves CPU."
+        },
+        "errors": {
+          "key_required": "Tianditu requires an API key.",
+          "invalid_key": "The API key is invalid or expired.",
+          "cannot_connect": "Could not reach the validation server."
         }
       }
-    },
-    "error": {
-      "key_required": "Tianditu requires an API key.",
-      "invalid_key": "The API key is invalid or expired.",
-      "cannot_connect": "Could not reach the validation server."
     }
   }
 }

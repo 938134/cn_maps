@@ -15,16 +15,16 @@
           "api_key": "矢量与影像共用同一个 Key。Key 只保存在 HA 服务端，不会下发到浏览器。选非天地图数据源时留空即可。",
           "fix_china_offset": "国内地图用 GCJ-02 坐标，HA 实体是 WGS84。打开后瓦片反向平移，路网与实体对齐（默认开）。",
           "precise_offset": "打开时每张瓦片最多拼 4 张源图（最准）；关掉只取 1 张，省 CPU。"
+        },
+        "errors": {
+          "key_required": "天地图必须填写 API Key。",
+          "invalid_key": "API Key 无效或已过期，请检查后重试。",
+          "cannot_connect": "校验服务器暂时连不上，请检查网络后重试。"
         }
       }
     },
     "abort": {
       "single_instance_allowed": "底图是全局设置，只能有一个实例。请到已有实例的「配置」里修改。"
-    },
-    "error": {
-      "key_required": "天地图必须填写 API Key。",
-      "invalid_key": "API Key 无效或已过期，请检查后重试。",
-      "cannot_connect": "校验服务器暂时连不上，请检查网络后重试。"
     }
   },
   "options": {
@@ -42,13 +42,13 @@
           "api_key": "始终显示；切换数据源时保留原值，不用重填。修改或清空都在这一页完成。",
           "fix_china_offset": "国内地图用 GCJ-02 坐标，HA 实体是 WGS84。打开后瓦片反向平移，路网与实体对齐（默认开）。",
           "precise_offset": "打开时每张瓦片最多拼 4 张源图（最准）；关掉只取 1 张，省 CPU。"
+        },
+        "errors": {
+          "key_required": "天地图必须填写 API Key。",
+          "invalid_key": "API Key 无效或已过期，请检查后重试。",
+          "cannot_connect": "校验服务器暂时连不上，请检查网络后重试。"
         }
       }
-    },
-    "error": {
-      "key_required": "天地图必须填写 API Key。",
-      "invalid_key": "API Key 无效或已过期，请检查后重试。",
-      "cannot_connect": "校验服务器暂时连不上，请检查网络后重试。"
     }
   }
 }
