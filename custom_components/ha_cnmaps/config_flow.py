@@ -182,9 +182,9 @@ class CnMapsConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors[CONF_API_KEY] = error
             else:
                 options = _save_options(user_input)
-                source = get_source(options[CONF_MAP_SOURCE])
+                # title 只用集成名：数据源在 options 里可见，切源不会改 entry title
                 return self.async_create_entry(
-                    title=f"{NAME} · {source.label}", data={}, options=options
+                    title=NAME, data={}, options=options
                 )
 
         return self.async_show_form(
