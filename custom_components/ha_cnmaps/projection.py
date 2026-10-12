@@ -1,16 +1,11 @@
 """坐标系投影 + 瓦片规划。
 
-合并了原来的 projection.py（WGS84 / GCJ-02 / BD-09 / 百度 BD09MC 坐标换算）
+合并了原来的 projection.py（WGS84 / GCJ-02 坐标换算）
 和 tilemath.py（把「输出瓦片」换算成「要抓哪几张上游瓦片、各画在哪里」）。
 
 纯 Python、零依赖，方便单测。
 
-几个容易踩的点：
-
-* GCJ-02 偏移只在中国大陆范围内生效，境外必须原样返回；
-* 百度的平面坐标不是球面 Web Mercator，而是 ``a=6378206, b=6356584.31`` 的
-  椭球墨卡托，y 还要乘一个椭球改正项。直接套球面公式在北京能差 20 公里；
-* 百度网格的原点在赤道 / 0° 经线交点，x 向东、y 向北为正，瓦片号可以是负数。
+一个容易踩的点：GCJ-02 偏移只在中国大陆范围内生效，境外必须原样返回。
 """
 
 from __future__ import annotations
@@ -30,14 +25,6 @@ _PI = math.pi
 # --- GCJ-02（国测局）椭球参数 ---------------------------------------------
 GCJ_A = 6378245.0
 GCJ_EE = 0.00669342162296594323
-
-# --- 百度 BD09MC 椭球参数 --------------------------------------------------
-BD_A = 6378206.0
-BD_B = 6356584.314245179
-BD_E = math.sqrt(1 - (BD_B / BD_A) ** 2)
-
-# 百度 L 级 ≈ 标准 XYZ 的 z = L - 0.7434
-BD_LEVEL_OFFSET = 18 - math.log2((2 * BD_A * _PI) / TILE_SIZE)
 
 
 # ------------------------------------------------------------ WGS84 -> GCJ-02
@@ -95,21 +82,6 @@ def wgs84_to_gcj02(lng: float, lat: float) -> tuple[float, float]:
     return (lng + d_lng, lat + d_lat)
 
 
-def gcj02_to_bd09(lng: float, lat: float) -> tuple[float, float]:
-    """GCJ-02 -> BD-09（百度）。"""
-    z = math.sqrt(lng * lng + lat * lat) + 0.00002 * math.sin(lat * _PI)
-    theta = math.atan2(lat, lng) + 0.000003 * math.cos(lng * _PI)
-    return (z * math.cos(theta) + 0.0065, z * math.sin(theta) + 0.006)
-
-
-def wgs84_to_bd09(lng: float, lat: float) -> tuple[float, float]:
-    """WGS84 -> BD-09（百度）。"""
-    if out_of_china(lng, lat):
-        return (lng, lat)
-    gcj_lng, gcj_lat = wgs84_to_gcj02(lng, lat)
-    return gcj02_to_bd09(gcj_lng, gcj_lat)
-
-
 def datum_lnglat(
     lng: float, lat: float, datum: str, fix: bool = True
 ) -> tuple[float, float]:
@@ -120,8 +92,6 @@ def datum_lnglat(
     """
     if not fix or datum == "wgs84":
         return (lng, lat)
-    if datum == "bd09":
-        return wgs84_to_bd09(lng, lat)
     return wgs84_to_gcj02(lng, lat)
 
 
@@ -148,29 +118,11 @@ def wrap_x(x: int, limit: int) -> int:
     return ((x % limit) + limit) % limit
 
 
-# ------------------------------------------------------- 百度 BD09MC 平面坐标
-def bd09_mc(lng: float, lat: float) -> tuple[float, float]:
-    """BD-09 经纬度 -> 百度平面坐标 BD09MC（米，原点在赤道 / 0° 经线交点）。"""
-    lam = (lng * _PI) / 180
-    phi = (lat * _PI) / 180
-    sinphi = math.sin(phi)
-    con = ((1 - BD_E * sinphi) / (1 + BD_E * sinphi)) ** (BD_E / 2)
-    return (BD_A * lam, BD_A * math.log(math.tan(_PI / 4 + phi / 2) * con))
-
-
-def bd_frac_tile(meter: float, level: int) -> float:
-    """BD09MC 米 -> 该级别下的「分数瓦片号」（可能是小数）。"""
-    return (meter * 2 ** (level - 18)) / TILE_SIZE
-
-
 # ================================================================ 瓦片规划
 #
 # 以下原 tilemath.py：把「输出瓦片 (z,x,y)」换算成「要抓哪几张上游瓦片、各
 # 画在哪里」。输出瓦片是 HA 地图按 WGS84 网格请求的那一张；上游瓦片是数据
 # 源自己的网格。两者之间差一个坐标系偏移和可能的级别差。
-
-# 百度网格最低只有 L3，最极端的情况是 z<=1 时一张输出瓦片要拼 6x6=36 张。
-_MAX_BD_TILES = 36
 
 _PLACEHOLDER = re.compile(r"\{(-?\w+)\}")
 
@@ -269,9 +221,7 @@ def plan_tile(
     fix_offset: bool = True,
     precise: bool = True,
 ) -> TilePlan:
-    """规划一张输出瓦片怎么拼出来。"""
-    if source.grid == "bd09mc":
-        return plan_bd(source, z, x, y, fix_offset=fix_offset)
+    """规划一张输出瓦片怎么拼出来（当前所有数据源均为 XYZ 网格）。"""
     return plan_xyz(source, z, x, y, fix_offset=fix_offset, precise=precise)
 
 
@@ -353,91 +303,13 @@ def plan_xyz(
     )
 
 
-def plan_bd(
-    source: MapSource,
-    z: int,
-    x: int,
-    y: int,
-    *,
-    fix_offset: bool = True,
-) -> TilePlan:
-    """百度网格（BD09MC）。"""
-    level = max(3, min(round(z + BD_LEVEL_OFFSET), source.max_level))
-
-    while True:
-        plan = _plan_bd_at(source, z, x, y, level, fix_offset=fix_offset)
-        if len(plan.tiles) <= _MAX_BD_TILES or level <= 3:
-            return plan
-        level -= 1
-
-
-def _plan_bd_at(
-    source: MapSource, z: int, x: int, y: int, level: int, *, fix_offset: bool
-) -> TilePlan:
-    west = tile_x_to_lon(x, z)
-    east = tile_x_to_lon(x + 1, z)
-    north = tile_y_to_lat(y, z)
-    south = tile_y_to_lat(y + 1, z)
-    clng = (west + east) / 2
-    clat = (north + south) / 2
-
-    def to_mc(lng: float, lat: float) -> tuple[float, float]:
-        p_lng, p_lat = datum_lnglat(lng, lat, source.datum, fix_offset)
-        return bd09_mc(p_lng, p_lat)
-
-    bxw = bd_frac_tile(to_mc(west, clat)[0], level)
-    bxe = bd_frac_tile(to_mc(east, clat)[0], level)
-    byn = bd_frac_tile(to_mc(clng, north)[1], level)
-    bys = bd_frac_tile(to_mc(clng, south)[1], level)
-
-    span_x = max(bxe - bxw, 1e-9)
-    span_y = max(byn - bys, 1e-9)
-    tx0 = math.floor(bxw)
-    tx1 = math.floor(bxe - 1e-9)
-    ty0 = math.floor(bys)
-    ty1 = math.floor(byn - 1e-9)
-
-    tiles = tuple(
-        PlannedTile(
-            x=tx,
-            y=ty,
-            px=((tx - bxw) / span_x) * TILE_SIZE,
-            py=((byn - ty - 1) / span_y) * TILE_SIZE,
-        )
-        for ty in range(ty0, ty1 + 1)
-        for tx in range(tx0, tx1 + 1)
-    )
-
-    tile_px_x = TILE_SIZE / span_x
-    tile_px_y = TILE_SIZE / span_y
-
-    return TilePlan(
-        z=z,
-        x=x,
-        y=y,
-        source_level=level,
-        grid="bd09mc",
-        limit=math.inf,
-        tile_px_x=tile_px_x,
-        tile_px_y=tile_px_y,
-        offset_x=0,
-        offset_y=0,
-        tiles=tiles,
-        passthrough=False,
-    )
-
-
 __all__ = [
-    "BD_A",
-    "BD_E",
-    "BD_LEVEL_OFFSET",
+    "GCJ_A",
+    "GCJ_EE",
     "TILE_SIZE",
     "PlannedTile",
     "TilePlan",
-    "bd09_mc",
-    "bd_frac_tile",
     "datum_lnglat",
-    "gcj02_to_bd09",
     "merc_y",
     "out_of_china",
     "plan_targets",
@@ -449,7 +321,6 @@ __all__ = [
     "tile_y_to_lat",
     "transform_lat",
     "transform_lng",
-    "wgs84_to_bd09",
     "wgs84_to_gcj02",
     "wrap_x",
 ]
