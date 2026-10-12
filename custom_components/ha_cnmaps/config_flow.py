@@ -115,7 +115,15 @@ _INVALID_MARKERS = ("301001", "301002", "301003", "非法", "invalid", "Invalid"
 async def _validate_tianditu_key(
     hass: HomeAssistant, source_key: str, key: str
 ) -> str | None:
-    """选天地图时校验 Key；选其它数据源时跳过。"""
+    """选天地图时校验 Key；选其它数据源时跳过。
+
+    判断策略（宽松）：
+    - 只检查响应体是否含无效标记（"非法"、"invalid"、错误码 301xxx）→ 判 invalid_key
+    - HTTP 4xx（403/401 等）多为鉴权/限流，可能是 Key 问题也可能是策略，一律放行
+    - HTTP 5xx 服务端故障，放行
+    - 网络异常（DNS/防火墙/超时），放行
+    这样避免用户因网络波动或策略限制被误阻断；Key 真无效会在实际取瓦片时暴露。
+    """
     source = get_source(source_key)
     if not source.needs_key:
         return None
@@ -129,23 +137,21 @@ async def _validate_tianditu_key(
         async with session.get(
             _TIANDITU_PROBE.format(key=key), timeout=_TIMEOUT
         ) as resp:
-            if resp.status != 200:
-                return "cannot_connect"
-            content_type = resp.headers.get("Content-Type", "")
             body = await resp.read()
+            if resp.status != 200:
+                _LOGGER.info(
+                    "ha_cnmaps: 天地图返回 HTTP %d，放行 Key（可能是鉴权/限流）",
+                    resp.status,
+                )
+                return None
     except (ClientError, asyncio.TimeoutError) as err:
-        _LOGGER.warning("ha_cnmaps: 校验天地图 Key 时连不上服务器（%s），先放行", err)
-        return None
-
-    if content_type.startswith("image/"):
+        _LOGGER.warning("ha_cnmaps: 校验天地图 Key 时连不上服务器（%s），放行", err)
         return None
 
     text = body[:512].decode("utf-8", errors="ignore")
     if any(marker in text for marker in _INVALID_MARKERS):
         _LOGGER.warning("ha_cnmaps: 天地图 Key 校验失败：%s", text.strip()[:200])
         return "invalid_key"
-    if not text.strip():
-        return "cannot_connect"
     return None
 
 
